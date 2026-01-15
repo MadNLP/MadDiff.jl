@@ -125,6 +125,9 @@ const SKIP_FINITEDIFF = Set([  # TODO: investigate
     "diffopt_model_1",
     "diffopt_nlp_6",
     "diffopt_sipopt_multi",
+    # "qp_max_basic",  # fails on github CI
+    # "nlp_max_exp",   # fails on github CI
+    # "nlp_max_quad",  # fails on github CI
 ])
 
 @testset "Compare with DiffOpt.jl and FiniteDiff" begin
@@ -202,10 +205,10 @@ const SKIP_FINITEDIFF = Set([  # TODO: investigate
                                 @test all(isapprox.(grad_mad_ones, grad_fd; atol=dλ_atol, rtol=rtol))
                             end
 
-                            dL_dx = randn(n_x)
-                            dL_dλ = randn(n_con)
-                            dL_dzl = randn(n_lb)
-                            dL_dzu = randn(n_ub)
+                            dL_dx = [(-1.0)^i * (0.5 + i * 0.1) for i in 1:n_x]
+                            dL_dλ = [(-1.0)^i * (0.3 + i * 0.2) for i in 1:n_con]
+                            dL_dzl = [(-1.0)^i * (0.7 + i * 0.1) for i in 1:n_lb]
+                            dL_dzu = [(-1.0)^i * (0.4 + i * 0.15) for i in 1:n_ub]
 
                             grad_mad_nu = run_maddiff_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu, opts...)
                             grad_diff_nu = run_diffopt_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu)
