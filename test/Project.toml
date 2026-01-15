@@ -1,0 +1,21 @@
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
+ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
+FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MadDiff = "0873d656-25a4-4889-b982-f3e325818f6d"
+MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
+MadNLPGPU = "d72a61cc-809d-412f-99be-fd81f4b8a598"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+NLPModelsJuMP = "792afdf1-32c1-5681-94e0-d7bf7a5df49e"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+DiffOpt = {rev = "mk/fix_nlp_bounds", url = "https://github.com/klamike/DiffOpt.jl.git"}
+MadDiff = {path = ".."}
+MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLPGPU = {rev = "ss/symv_hotfix", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}

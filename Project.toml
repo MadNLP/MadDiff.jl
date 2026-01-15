@@ -1,0 +1,24 @@
+name = "MadDiff"
+uuid = "0873d656-25a4-4889-b982-f3e325818f6d"
+version = "0.1.0"
+authors = ["Klamkin, Michael <mklamkin3@gatech.edu>"]
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
+
+[weakdeps]
+DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+
+[sources]
+MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+
+[extensions]
+MathOptInterfaceExt = ["MathOptInterface"]
+DiffOptExt = ["DiffOpt", "MathOptInterface"]
+
+[compat]
+DiffOpt = "0.5.4"
+MathOptInterface = "1.20"
+julia = "1.9"
