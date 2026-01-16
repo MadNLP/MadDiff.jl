@@ -28,7 +28,7 @@ function _prepare_sensitivity_kkt(solver, config::MadDiffConfig)
     kkt = if reusing_solver_kkt
         solver.kkt
     else
-        config.reuse_kkt && @info "Ignoring reuse_kkt=true since custom KKT config was passed. To silence this message, pass reuse_kkt=false."
+        # config.reuse_kkt && @info "Ignoring reuse_kkt=true since custom KKT config was passed. To silence this message, pass reuse_kkt=false."
         _build_kkt_for_sensitivity(
             solver;
             kkt_system = config.kkt_system,

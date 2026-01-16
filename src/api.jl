@@ -1,4 +1,4 @@
-# TODO: ask/look for this in madnlp
+# TODO: ask for this from madnlp
 _pack_x(v, cb::MadNLP.AbstractCallback) = copy(v)
 _pack_x(v, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = v[cb.fixed_handler.free]
 _kkt_to_full_idx(cb::MadNLP.AbstractCallback, kkt_idx) = kkt_idx
