@@ -121,8 +121,8 @@ function _get_reverse_cache!(sens::MadDiffSolver)
         x_kkt = MadNLP.primal(sens.solver.x)[1:dims.n_x_kkt]
         MadNLP.unpack_x!(x_opt, sens.solver.cb, x_kkt)
 
-        has_lb = falses(dims.n_x)
-        has_ub = falses(dims.n_x)
+        has_lb = _falses_like(x_array, dims.n_x)
+        has_ub = _falses_like(x_array, dims.n_x)
         has_lb[dims.var_ind_lb] .= true
         has_ub[dims.var_ind_ub] .= true
 

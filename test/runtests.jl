@@ -6,7 +6,10 @@ using DiffOpt
 using LinearAlgebra
 using MathOptInterface
 using FiniteDiff
+using CUDA
 const MOI = MathOptInterface
+
+const CUDA_FUNCTIONAL = CUDA.functional()
 
 @testset "README examples" begin
     @testset "NLPModels API" begin
@@ -220,7 +223,10 @@ end
 # (one-shot) nlpmodels API
 # DiffOpt.DifferentiateTimeSec
 # reverse without param_pullback
-# CUDA
+
+if CUDA_FUNCTIONAL
+    include("cuda.jl")
+end
 
 
 @testset "MOI" begin

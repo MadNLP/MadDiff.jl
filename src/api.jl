@@ -1,9 +1,12 @@
-# TODO: ask for this from madnlp
+# TODO: ask/look for this in madnlp
 _pack_x(v, cb::MadNLP.AbstractCallback) = copy(v)
 _pack_x(v, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = v[cb.fixed_handler.free]
 _kkt_to_full_idx(cb::MadNLP.AbstractCallback, kkt_idx) = kkt_idx
 _kkt_to_full_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, kkt_idx) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = cb.fixed_handler.free[kkt_idx]
 _zeros_like(x_array, ::Type{T}, n::Int) where {T} = fill!(similar(x_array, T, n), zero(T))
+_falses_like(x_array, n::Int) = fill!(similar(x_array, Bool, n), false)
+_to_bool_array(x_array, v::BitVector) = convert(Vector{Bool}, v)
+_to_bool_array(x_array, v) = v
 function _unpack_sensitivity!(v_full, cb::MadNLP.AbstractCallback, v_kkt)
     v_full .= v_kkt
 end
@@ -131,7 +134,8 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
 
     lcon = NLPModels.get_lcon(solver.nlp)
     ucon = NLPModels.get_ucon(solver.nlp)
-    is_eq = isfinite.(lcon) .& (lcon .== ucon)
+    x_array = MadNLP.full(solver.x)
+    is_eq = _to_bool_array(x_array, isfinite.(lcon) .& (lcon .== ucon))
 
     slack_in_lb = ind_lb .> n_x_kkt
     slack_in_ub = ind_ub .> n_x_kkt
@@ -144,7 +148,6 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
                        is_eq, slack_lb_pos, slack_lb_con, slack_ub_pos, slack_ub_con)
     kkt = _prepare_sensitivity_kkt(solver, config)
 
-    x_array = MadNLP.full(solver.x)
     T = eltype(x_array)
     KKT = typeof(kkt)
     Solver = typeof(solver)
