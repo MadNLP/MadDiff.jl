@@ -17,5 +17,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [sources]
 DiffOpt = {rev = "mk/fix_nlp_bounds", url = "https://github.com/klamike/DiffOpt.jl.git"}
 MadDiff = {path = ".."}
-MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
-MadNLPGPU = {rev = "ss/symv_hotfix", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLP = {rev = "mk/fixmoigpu", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLPGPU = {path = "/storage/home/hcoda1/3/mklamkin3/qq/proj/madnlp_moi_test_dir/MadNLP.jl/lib/MadNLPGPU"}

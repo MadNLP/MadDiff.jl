@@ -23,7 +23,15 @@ function get_bound_constraint_refs(model)
 end
 
 function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+        # FIXME: we need to make sure linear_solver is passed to madnlp here
+        mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
+        optimizer = (;kwargs...) -> MadNLP.Optimizer(linear_solver=CUDSSSolver; kwargs...)
+        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts_filtered...))
+        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
+    else
+        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+    end
     set_silent(model)
     vars, params = build_model(model)
     optimize!(model)
@@ -67,7 +75,15 @@ end
 
 function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, mad_opts...)
     use_ones = isnothing(dL_dx) && isnothing(dL_dλ) && isnothing(dL_dzl) && isnothing(dL_dzu)
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+        # FIXME: we need to make sure linear_solver is passed to madnlp here
+        mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
+        optimizer = (;kwargs...) -> MadNLP.Optimizer(linear_solver=CUDSSSolver; kwargs...)
+        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts_filtered...))
+        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
+    else
+        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+    end
     set_silent(model)
     vars, params = build_model(model)
     optimize!(model)

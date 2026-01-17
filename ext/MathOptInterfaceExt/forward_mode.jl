@@ -32,20 +32,39 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     end
 
     x = inner.result.solution
-    y = _get_y_cache!(model, n_con)
-    MadNLP.unpack_y!(y, solver.cb, solver.y)
+    VT = typeof(solver.y)
+    if VT <: Vector
+        y = _get_y_cache!(model, n_con)
+        MadNLP.unpack_y!(y, solver.cb, solver.y)
+    else
+        y_gpu = similar(solver.y, n_con)
+        MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
+        y = Array(y_gpu)
+    end
     Dxp_L_Δp, Dp_g_Δp = compute_param_jvp!(inner, x, y, Δp, ctx)
 
     sens = _get_sensitivity_solver!(model)
-    result = MadDiff.forward_differentiate!(sens; Dxp_L=Dxp_L_Δp, Dp_g=Dp_g_Δp)
+
+    VT = typeof(solver.y)
+    if VT <: Vector
+        result = MadDiff.forward_differentiate!(sens; Dxp_L=Dxp_L_Δp, Dp_g=Dp_g_Δp)
+        dx_cpu = result.dx
+        dλ_cpu = result.dλ
+    else
+        Dxp_L_gpu = VT(Dxp_L_Δp)
+        Dp_g_gpu = VT(Dp_g_Δp)
+        result = MadDiff.forward_differentiate!(sens; Dxp_L=Dxp_L_gpu, Dp_g=Dp_g_gpu)
+        dx_cpu = Array(result.dx)
+        dλ_cpu = Array(result.dλ)
+    end
 
     for (i, vi) in enumerate(ctx.primal_vars)
-        model.forward.primal_sensitivities[vi] = result.dx[i]
+        model.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
     dλ = _get_dλ_cache!(model, n_con)
     # MOI and MadNLP have opposite sign conventions for constraint duals
-    dλ .= .-result.dλ
+    dλ .= .-dλ_cpu
 
     _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dλ)
     _store_bound_dual_sensitivities!(model, sens, result, ctx)
@@ -86,24 +105,27 @@ function _store_bound_dual_sensitivities!(model, sens, result, ctx)
     vi_to_lb_idx = model.vi_to_lb_idx
     vi_to_ub_idx = model.vi_to_ub_idx
 
+    dzl = result.dzl isa Vector ? result.dzl : Array(result.dzl)
+    dzu = result.dzu isa Vector ? result.dzu : Array(result.dzu)
+
     for (vi, ci) in ctx.vi_to_lb_ci
         i = get(vi_to_lb_idx, vi, 0)
-        !iszero(i) && (dsens[ci] = result.dzl[i])
+        !iszero(i) && (dsens[ci] = dzl[i])
     end
     for (vi, ci) in ctx.vi_to_ub_ci
         i = get(vi_to_ub_idx, vi, 0)
-        !iszero(i) && (dsens[ci] = -result.dzu[i])
+        !iszero(i) && (dsens[ci] = -dzu[i])
     end
 
     for (vi, ci) in ctx.vi_to_interval_ci
         dzl_idx = get(vi_to_lb_idx, vi, 0)
         dzu_idx = get(vi_to_ub_idx, vi, 0)
         if !iszero(dzl_idx) && !iszero(dzu_idx)
-            dsens[ci] = result.dzl[dzl_idx] - result.dzu[dzu_idx]
+            dsens[ci] = dzl[dzl_idx] - dzu[dzu_idx]
         elseif !iszero(dzl_idx)
-            dsens[ci] = result.dzl[dzl_idx]
+            dsens[ci] = dzl[dzl_idx]
         elseif !iszero(dzu_idx)
-            dsens[ci] = -result.dzu[dzu_idx]
+            dsens[ci] = -dzu[dzu_idx]
         end
     end
 
@@ -111,11 +133,11 @@ function _store_bound_dual_sensitivities!(model, sens, result, ctx)
         dzl_idx = get(vi_to_lb_idx, vi, 0)
         dzu_idx = get(vi_to_ub_idx, vi, 0)
         if !iszero(dzl_idx) && !iszero(dzu_idx)
-            dsens[ci] = result.dzl[dzl_idx] - result.dzu[dzu_idx]
+            dsens[ci] = dzl[dzl_idx] - dzu[dzu_idx]
         elseif !iszero(dzl_idx)
-            dsens[ci] = result.dzl[dzl_idx]
+            dsens[ci] = dzl[dzl_idx]
         elseif !iszero(dzu_idx)
-            dsens[ci] = -result.dzu[dzu_idx]
+            dsens[ci] = -dzu[dzu_idx]
         end
     end
 

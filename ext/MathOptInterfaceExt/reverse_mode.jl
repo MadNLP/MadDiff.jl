@@ -70,11 +70,23 @@ function _make_param_pullback_closure(model, ctx::SensitivityContext{T}) where {
     return function(out, adj_x, adj_λ, adj_zl, adj_zu, sens)
         x = model.inner.result.solution
         n_con = length(adj_λ)
-        y = _get_y_cache!(model, n_con)
-        MadNLP.unpack_y!(y, model.inner.solver.cb, model.inner.solver.y)
+        solver = model.inner.solver
+        VT = typeof(solver.y)
+        if VT <: Vector
+            y = _get_y_cache!(model, n_con)
+            MadNLP.unpack_y!(y, solver.cb, solver.y)
+            adj_x_cpu = adj_x
+            adj_λ_cpu = adj_λ
+        else
+            y_gpu = similar(solver.y, n_con)
+            MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
+            y = Array(y_gpu)
+            adj_x_cpu = Array(adj_x)
+            adj_λ_cpu = Array(adj_λ)
+        end
 
-        grad_p = _compute_param_pullback!(model.inner, x, y, adj_x, adj_λ, ctx)
-        out .= grad_p
+        grad_p = _compute_param_pullback!(model.inner, x, y, adj_x_cpu, adj_λ_cpu, ctx)
+        copyto!(out, grad_p)
         return out
     end
 end
@@ -109,11 +121,22 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     # moi and madnlp have opposite conventions
     dL_dλ .*= -one(T)
-    result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 
-    ∂L_∂p = result.grad_p
+    VT = typeof(solver.y)
+    if VT <: Vector
+        result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+        grad_p_cpu = result.grad_p
+    else
+        dL_dx_gpu = VT(dL_dx)
+        dL_dλ_gpu = VT(dL_dλ)
+        dL_dzl_gpu = VT(dL_dzl)
+        dL_dzu_gpu = VT(dL_dzu)
+        result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dλ=dL_dλ_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu)
+        grad_p_cpu = Array(result.grad_p)
+    end
+
     for (ci, vi) in model.param_ci_to_vi
-        model.reverse.param_outputs[ci] = ∂L_∂p[ctx.param_idx[vi]]
+        model.reverse.param_outputs[ci] = grad_p_cpu[ctx.param_idx[vi]]
     end
     return
 end

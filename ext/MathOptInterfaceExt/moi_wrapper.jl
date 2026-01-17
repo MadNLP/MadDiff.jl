@@ -129,6 +129,9 @@ function _get_sensitivity_solver!(model::Optimizer)
             param_pullback = _make_param_pullback_closure(model, ctx),
             n_params = ctx.n_p,
         )
+        dims = model.sensitivity_solver.dims
+        model.ind_lb_cpu = dims.ind_lb isa Vector ? dims.ind_lb : Array(dims.ind_lb)
+        model.ind_ub_cpu = dims.ind_ub isa Vector ? dims.ind_ub : Array(dims.ind_ub)
         _populate_bound_idx_mappings!(model)
     end
     return model.sensitivity_solver
@@ -144,13 +147,13 @@ function _populate_bound_idx_mappings!(model::Optimizer)
     empty!(model.vi_to_lb_idx)
     empty!(model.vi_to_ub_idx)
     dims = sens.dims
-    for (i, kkt_idx) in enumerate(dims.ind_lb)
+    for (i, kkt_idx) in enumerate(model.ind_lb_cpu)
         kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
         moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
         vi = ctx.primal_vars[moi_idx]
         model.vi_to_lb_idx[vi] = i
     end
-    for (i, kkt_idx) in enumerate(dims.ind_ub)
+    for (i, kkt_idx) in enumerate(model.ind_ub_cpu)
         kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
         moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
         vi = ctx.primal_vars[moi_idx]

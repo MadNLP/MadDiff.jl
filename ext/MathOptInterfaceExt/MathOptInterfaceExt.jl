@@ -56,6 +56,8 @@ mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimize
     sensitivity_context::Union{Nothing, SensitivityContext}
     vi_to_lb_idx::Dict{MOI.VariableIndex, Int}
     vi_to_ub_idx::Dict{MOI.VariableIndex, Int}
+    ind_lb_cpu::Vector{Int}
+    ind_ub_cpu::Vector{Int}
     diff_time::T
 end
 
@@ -71,6 +73,8 @@ function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimi
         nothing,
         Dict{MOI.VariableIndex, Int}(),
         Dict{MOI.VariableIndex, Int}(),
+        Int[],
+        Int[],
         zero(T),
     )
 end

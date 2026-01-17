@@ -7,6 +7,7 @@ using LinearAlgebra
 using MathOptInterface
 using FiniteDiff
 using CUDA
+using MadNLPGPU
 const MOI = MathOptInterface
 
 const CUDA_FUNCTIONAL = CUDA.functional()
@@ -108,6 +109,11 @@ const KKT_CONFIGS = [
     ("DenseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
     ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
 ]
+
+if CUDA_FUNCTIONAL
+    @info "Testing with CUDSS (reduced tolerances)"
+    push!(KKT_CONFIGS, ("CUDA", Dict{Symbol, Any}(:linear_solver => CUDSSSolver, :tol => 1e-8), 1e-4, 1e-2, false))
+end
 
 const FV_CONFIGS = [
     ("Default", nothing),

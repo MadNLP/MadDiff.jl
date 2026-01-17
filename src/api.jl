@@ -129,8 +129,8 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     n_ub = length(ind_ub)
     var_ind_lb_kkt = ind_lb[ind_lb .<= n_x_kkt]
     var_ind_ub_kkt = ind_ub[ind_ub .<= n_x_kkt]
-    var_ind_lb = map(i -> _kkt_to_full_idx(solver.cb, i), var_ind_lb_kkt)
-    var_ind_ub = map(i -> _kkt_to_full_idx(solver.cb, i), var_ind_ub_kkt)
+    var_ind_lb = _kkt_to_full_idx(solver.cb, var_ind_lb_kkt)
+    var_ind_ub = _kkt_to_full_idx(solver.cb, var_ind_ub_kkt)
 
     lcon = NLPModels.get_lcon(solver.nlp)
     ucon = NLPModels.get_ucon(solver.nlp)
