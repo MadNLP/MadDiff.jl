@@ -18,4 +18,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 DiffOpt = {rev = "mk/fix_nlp_bounds", url = "https://github.com/klamike/DiffOpt.jl.git"}
 MadDiff = {path = ".."}
 MadNLP = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
-MadNLPGPU = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLPGPU = {rev = "mk/fixmoigpu_madnlpgpu", subdir="lib/MadNLPGPU", url = "https://github.com/klamike/MadNLP.jl.git"}
