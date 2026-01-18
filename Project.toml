@@ -13,8 +13,7 @@ DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
-MadIPM = {path = "../MadIPM.jl"}
-MadNLP = {path = "../MadNLP.jl"}
+MadNLP = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
 
 [extensions]
 DiffOptExt = ["DiffOpt", "MathOptInterface"]
