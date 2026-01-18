@@ -154,6 +154,7 @@ struct ReverseCache{VT, VK, VB}
     grad_p_cache::VT
     seed_zl_cache::VT
     seed_zu_cache::VT
+    dλ_scaled_cache::VT
 end
 
 function _get_reverse_cache!(sens::MadDiffSolver)
@@ -194,6 +195,7 @@ function _get_reverse_cache!(sens::MadDiffSolver)
             grad_p_cache,
             _zeros_like(x_array, T, dims.n_lb),
             _zeros_like(x_array, T, dims.n_ub),
+            _zeros_like(x_array, T, dims.n_con),
         )
     end
     return sens.reverse_cache

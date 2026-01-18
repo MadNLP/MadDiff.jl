@@ -181,6 +181,18 @@ function reset_sensitivity_cache!(sens::MadDiffSolver)
     return sens
 end
 
+_pullback_sub!(out, ::Nothing, v) = nothing
+function _pullback_sub!(out, M, v)
+    @lencheck size(M, 1) v
+    out .-= M' * v
+end
+
+_pullback_add!(out, ::Nothing, v) = nothing
+function _pullback_add!(out, M, v)
+    @lencheck size(M, 1) v
+    out .+= M' * v
+end
+
 """
     make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dl_dp=nothing, du_dp=nothing)
 
@@ -214,34 +226,14 @@ result = reverse_differentiate!(sens; dL_dx)
 function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dl_dp=nothing, du_dp=nothing)
     return function(out, dx, dλ, dzl, dzu, sens)
         fill!(out, zero(eltype(out)))
-
-        if !isnothing(d2L_dxdp)
-            size(d2L_dxdp, 1) == length(dx) || throw(DimensionMismatch("d2L_dxdp has $(size(d2L_dxdp, 1)) rows, expected $(length(dx))"))
-            out .-= d2L_dxdp' * dx
-        end
-        if !isnothing(dg_dp)
-            size(dg_dp, 1) == length(dλ) || throw(DimensionMismatch("dg_dp has $(size(dg_dp, 1)) rows, expected $(length(dλ))"))
-            out .-= dg_dp' * dλ
-        end
-
-        dλ_scaled = dλ .* sens.reverse_cache.eq_scale
-        if !isnothing(dlcon_dp)
-            size(dlcon_dp, 1) == length(dλ) || throw(DimensionMismatch("dlcon_dp has $(size(dlcon_dp, 1)) rows, expected $(length(dλ))"))
-            out .+= dlcon_dp' * dλ_scaled
-        end
-        if !isnothing(ducon_dp)
-            size(ducon_dp, 1) == length(dλ) || throw(DimensionMismatch("ducon_dp has $(size(ducon_dp, 1)) rows, expected $(length(dλ))"))
-            out .+= ducon_dp' * dλ_scaled
-        end
-
-        if !isnothing(dl_dp)
-            size(dl_dp, 1) == length(dzl) || throw(DimensionMismatch("dl_dp has $(size(dl_dp, 1)) rows, expected $(length(dzl))"))
-            out .-= dl_dp' * dzl
-        end
-        if !isnothing(du_dp)
-            size(du_dp, 1) == length(dzu) || throw(DimensionMismatch("du_dp has $(size(du_dp, 1)) rows, expected $(length(dzu))"))
-            out .+= du_dp' * dzu
-        end
+        _pullback_sub!(out, d2L_dxdp, dx)
+        _pullback_sub!(out, dg_dp, dλ)
+        dλ_scaled = sens.reverse_cache.dλ_scaled_cache
+        dλ_scaled .= dλ .* sens.reverse_cache.eq_scale
+        _pullback_add!(out, dlcon_dp, dλ_scaled)
+        _pullback_add!(out, ducon_dp, dλ_scaled)
+        _pullback_sub!(out, dl_dp, dzl)
+        _pullback_add!(out, du_dp, dzu)
         return out
     end
 end
