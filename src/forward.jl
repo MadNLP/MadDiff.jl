@@ -37,8 +37,8 @@ Input vectors are NOT modified.
 # Keyword Arguments
 - `d2L_dxdp`: Parameter-Lagrangian cross derivative times Δp: (∂²L/∂x∂p) * Δp (length = n_x)
 - `dg_dp`: Parameter-constraint LHS Jacobian times Δp: (∂g/∂p) * Δp (length = n_con)
-- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_lb)
-- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_ub)
+- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_x)
+- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_x)
 - `dlcon_dp`: Constraint lower bound perturbation times Δp: (∂lcon/∂p) * Δp (length = n_con)
 - `ducon_dp`: Constraint upper bound perturbation times Δp: (∂ucon/∂p) * Δp (length = n_con)
 
@@ -46,6 +46,7 @@ Input vectors are NOT modified.
 For equality constraints (lcon[i] == ucon[i]), provide the same perturbation for both
 dlcon_dp[i] and ducon_dp[i]. The implementation uses (dlcon_dp + ducon_dp)/2 for equality constraints.
 For entries where lcon or ucon is ±Inf, the corresponding dlcon_dp/ducon_dp value is ignored.
+For fixed variables (lvar[i] == uvar[i]) with MakeParameter, the sensitivity dx[i] is set to dl_dp[i].
 
 # Returns
 - The same `result` object, with updated values
@@ -66,8 +67,8 @@ function forward_differentiate!(
     dims = sens.dims
     !isnothing(d2L_dxdp) && @lencheck dims.n_x d2L_dxdp
     !isnothing(dg_dp) && @lencheck dims.n_con dg_dp
-    !isnothing(dl_dp) && @lencheck dims.n_lb dl_dp
-    !isnothing(du_dp) && @lencheck dims.n_ub du_dp
+    !isnothing(dl_dp) && @lencheck dims.n_x dl_dp
+    !isnothing(du_dp) && @lencheck dims.n_x du_dp
     !isnothing(dlcon_dp) && @lencheck dims.n_con dlcon_dp
     !isnothing(ducon_dp) && @lencheck dims.n_con ducon_dp
 
@@ -78,12 +79,15 @@ function forward_differentiate!(
     dg_dp_scaled = _copy_and_scale_dg_dp(dg_dp, cb, cache)
     dlcon_dp_scaled = _copy_and_scale_dlcon_dp(dlcon_dp, cb, cache)
     ducon_dp_scaled = _copy_and_scale_ducon_dp(ducon_dp, cb, cache)
+    dl_dp_kkt = _extract_var_bound_dp(dl_dp, dims, Val(:lower))
+    du_dp_kkt = _extract_var_bound_dp(du_dp, dims, Val(:upper))
 
-    sol = _solve_jvp!(sens.kkt, cache.work, d2L_dxdp_kkt, dg_dp_scaled, dl_dp, du_dp, dlcon_dp_scaled, ducon_dp_scaled, dims)
+    sol = _solve_jvp!(sens.kkt, cache.work, d2L_dxdp_kkt, dg_dp_scaled, dl_dp_kkt, du_dp_kkt, dlcon_dp_scaled, ducon_dp_scaled, dims)
 
     dx_kkt = _extract_sensitivities!(cache.dλ, cache.dzl, cache.dzu, sol, sens.solver)
 
     _unpack_primal!(cache.dx_full, cb, dx_kkt)
+    _set_fixed_sensitivity!(cache.dx_full, dl_dp, du_dp, dims)
     MadNLP.unpack_y!(cache.dλ, cb, cache.dλ)
 
     copyto!(result.dx, cache.dx_full)
@@ -109,8 +113,8 @@ Input vectors are NOT modified.
 # Keyword Arguments
 - `d2L_dxdp`: Parameter-Lagrangian cross derivative times Δp: (∂²L/∂x∂p) * Δp (length = n_x)
 - `dg_dp`: Parameter-constraint LHS Jacobian times Δp: (∂g/∂p) * Δp (length = n_con)
-- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_lb)
-- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_ub)
+- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_x)
+- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_x)
 - `dlcon_dp`: Constraint lower bound perturbation times Δp: (∂lcon/∂p) * Δp (length = n_con)
 - `ducon_dp`: Constraint upper bound perturbation times Δp: (∂ucon/∂p) * Δp (length = n_con)
 
@@ -298,3 +302,27 @@ _jvp_set_dual_bound_var!(dual, ::Nothing, ::Nothing, ::Val{:lower}) = nothing
 _jvp_set_dual_bound_var!(dual, ::Nothing, ::Nothing, ::Val{:upper}) = nothing
 _jvp_set_dual_bound_con!(dual, ::Nothing, ::Nothing, pos, con, ::Val{:lower}) = nothing
 _jvp_set_dual_bound_con!(dual, ::Nothing, ::Nothing, pos, con, ::Val{:upper}) = nothing
+
+_extract_var_bound_dp(::Nothing, dims, ::Val{:lower}) = nothing
+_extract_var_bound_dp(::Nothing, dims, ::Val{:upper}) = nothing
+function _extract_var_bound_dp(dp_full, dims, ::Val{:lower})
+    T = eltype(dp_full)
+    dp_kkt = zeros(T, dims.n_lb)
+    dp_kkt[dims.var_lb_pos] .= dp_full[dims.var_idx_lb]
+    return dp_kkt
+end
+function _extract_var_bound_dp(dp_full, dims, ::Val{:upper})
+    T = eltype(dp_full)
+    dp_kkt = zeros(T, dims.n_ub)
+    dp_kkt[dims.var_ub_pos] .= dp_full[dims.var_idx_ub]
+    return dp_kkt
+end
+
+function _set_fixed_sensitivity!(dx, dl_dp, du_dp, dims)
+    isempty(dims.fixed_idx) && return
+    if !isnothing(dl_dp)
+        dx[dims.fixed_idx] .= dl_dp[dims.fixed_idx]
+    elseif !isnothing(du_dp)
+        dx[dims.fixed_idx] .= du_dp[dims.fixed_idx]
+    end
+end

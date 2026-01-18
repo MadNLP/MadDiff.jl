@@ -279,6 +279,135 @@ if CUDA_FUNCTIONAL
     include("cuda.jl")
 end
 
+@testset "Fixed variable with parameter-dependent bounds" begin
+    @testset "Forward mode - compare with DiffOpt" begin
+        # Problem: min x^2 + y^2 s.t. x + y >= 3, y == p (equality constraint fixes y to p)
+        # When p = 1.5: y* = 1.5, x* = 1.5 (inequality constraint active)
+        model_ref = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_ref, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_ref)
+        @variable(model_ref, x_ref >= 0, start=1.5)
+        @variable(model_ref, y_ref, start=1.5)
+        @variable(model_ref, p_ref in MOI.Parameter(1.5))
+        @constraint(model_ref, y_ref == p_ref)
+        @constraint(model_ref, x_ref + y_ref >= 3)
+        @objective(model_ref, Min, x_ref^2 + y_ref^2)
+        optimize!(model_ref)
+
+        DiffOpt.empty_input_sensitivities!(model_ref)
+        MOI.set(model_ref, DiffOpt.ForwardConstraintSet(), ParameterRef(p_ref), MOI.Parameter(1.0))
+        DiffOpt.forward_differentiate!(model_ref)
+        dx_ref = MOI.get(model_ref, DiffOpt.ForwardVariablePrimal(), x_ref)
+        dy_ref = MOI.get(model_ref, DiffOpt.ForwardVariablePrimal(), y_ref)
+
+        model_mad = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; fixed_variable_treatment=MadNLP.MakeParameter))
+        set_silent(model_mad)
+        @variable(model_mad, x_mad >= 0, start=1.5)
+        @variable(model_mad, y_mad, start=1.5)
+        @variable(model_mad, p_mad in MOI.Parameter(1.5))
+        @constraint(model_mad, y_mad == p_mad)
+        @constraint(model_mad, x_mad + y_mad >= 3)
+        @objective(model_mad, Min, x_mad^2 + y_mad^2)
+        optimize!(model_mad)
+
+        DiffOpt.empty_input_sensitivities!(model_mad)
+        MOI.set(model_mad, DiffOpt.ForwardConstraintSet(), ParameterRef(p_mad), MOI.Parameter(1.0))
+        DiffOpt.forward_differentiate!(model_mad)
+        dx_mad = MOI.get(model_mad, DiffOpt.ForwardVariablePrimal(), x_mad)
+        dy_mad = MOI.get(model_mad, DiffOpt.ForwardVariablePrimal(), y_mad)
+
+        @test isapprox(dx_mad, dx_ref; atol=1e-6)
+        @test isapprox(dy_mad, dy_ref; atol=1e-6)
+        @test isapprox(dy_mad, 1.0; atol=1e-6)  # dy/dp = 1
+        @test isapprox(dx_mad, -1.0; atol=1e-6)  # dx/dp = -1 (from constraint)
+    end
+
+    @testset "Reverse mode - compare with DiffOpt" begin
+        model_ref = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_ref, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_ref)
+        @variable(model_ref, x_ref >= 0, start=1.5)
+        @variable(model_ref, y_ref, start=1.5)
+        @variable(model_ref, p_ref in MOI.Parameter(1.5))
+        @constraint(model_ref, y_ref == p_ref)
+        @constraint(model_ref, x_ref + y_ref >= 3)
+        @objective(model_ref, Min, x_ref^2 + y_ref^2)
+        optimize!(model_ref)
+
+        DiffOpt.empty_input_sensitivities!(model_ref)
+        MOI.set(model_ref, DiffOpt.ReverseVariablePrimal(), x_ref, 1.0)
+        MOI.set(model_ref, DiffOpt.ReverseVariablePrimal(), y_ref, 1.0)
+        DiffOpt.reverse_differentiate!(model_ref)
+        dp_ref = MOI.get(model_ref, DiffOpt.ReverseConstraintSet(), ParameterRef(p_ref)).value
+
+        model_mad = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; fixed_variable_treatment=MadNLP.MakeParameter))
+        set_silent(model_mad)
+        @variable(model_mad, x_mad >= 0, start=1.5)
+        @variable(model_mad, y_mad, start=1.5)
+        @variable(model_mad, p_mad in MOI.Parameter(1.5))
+        @constraint(model_mad, y_mad == p_mad)
+        @constraint(model_mad, x_mad + y_mad >= 3)
+        @objective(model_mad, Min, x_mad^2 + y_mad^2)
+        optimize!(model_mad)
+
+        DiffOpt.empty_input_sensitivities!(model_mad)
+        MOI.set(model_mad, DiffOpt.ReverseVariablePrimal(), x_mad, 1.0)
+        MOI.set(model_mad, DiffOpt.ReverseVariablePrimal(), y_mad, 1.0)
+        DiffOpt.reverse_differentiate!(model_mad)
+        dp_mad = MOI.get(model_mad, DiffOpt.ReverseConstraintSet(), ParameterRef(p_mad)).value
+
+        @test isapprox(dp_mad, dp_ref; atol=1e-6)
+    end
+
+    @testset "Multiple fixed variables - compare with DiffOpt" begin
+        # min x^2 + y^2 + z^2 s.t. x + y + z >= 6, y == p, z == 2p
+
+        model_ref = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_ref, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_ref)
+        @variable(model_ref, x_ref >= 0, start=2.0)
+        @variable(model_ref, y_ref, start=1.0)
+        @variable(model_ref, z_ref, start=2.0)
+        @variable(model_ref, p_ref in MOI.Parameter(1.0))
+        @constraint(model_ref, y_ref == p_ref)
+        @constraint(model_ref, z_ref == 2 * p_ref)
+        @constraint(model_ref, x_ref + y_ref + z_ref >= 6)
+        @objective(model_ref, Min, x_ref^2 + y_ref^2 + z_ref^2)
+        optimize!(model_ref)
+
+        DiffOpt.empty_input_sensitivities!(model_ref)
+        MOI.set(model_ref, DiffOpt.ForwardConstraintSet(), ParameterRef(p_ref), MOI.Parameter(1.0))
+        DiffOpt.forward_differentiate!(model_ref)
+        dx_ref = MOI.get(model_ref, DiffOpt.ForwardVariablePrimal(), x_ref)
+        dy_ref = MOI.get(model_ref, DiffOpt.ForwardVariablePrimal(), y_ref)
+        dz_ref = MOI.get(model_ref, DiffOpt.ForwardVariablePrimal(), z_ref)
+
+        model_mad = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; fixed_variable_treatment=MadNLP.MakeParameter))
+        set_silent(model_mad)
+        @variable(model_mad, x_mad >= 0, start=2.0)
+        @variable(model_mad, y_mad, start=1.0)
+        @variable(model_mad, z_mad, start=2.0)
+        @variable(model_mad, p_mad in MOI.Parameter(1.0))
+        @constraint(model_mad, y_mad == p_mad)
+        @constraint(model_mad, z_mad == 2 * p_mad)
+        @constraint(model_mad, x_mad + y_mad + z_mad >= 6)
+        @objective(model_mad, Min, x_mad^2 + y_mad^2 + z_mad^2)
+        optimize!(model_mad)
+
+        DiffOpt.empty_input_sensitivities!(model_mad)
+        MOI.set(model_mad, DiffOpt.ForwardConstraintSet(), ParameterRef(p_mad), MOI.Parameter(1.0))
+        DiffOpt.forward_differentiate!(model_mad)
+        dx_mad = MOI.get(model_mad, DiffOpt.ForwardVariablePrimal(), x_mad)
+        dy_mad = MOI.get(model_mad, DiffOpt.ForwardVariablePrimal(), y_mad)
+        dz_mad = MOI.get(model_mad, DiffOpt.ForwardVariablePrimal(), z_mad)
+
+        @test isapprox(dx_mad, dx_ref; atol=1e-6)
+        @test isapprox(dy_mad, dy_ref; atol=1e-6)
+        @test isapprox(dz_mad, dz_ref; atol=1e-6)
+        @test isapprox(dy_mad, 1.0; atol=1e-6)  # dy/dp = 1
+        @test isapprox(dz_mad, 2.0; atol=1e-6)  # dz/dp = 2
+    end
+end
 
 @testset "MOI" begin
     model = MOI.Utilities.CachingOptimizer(

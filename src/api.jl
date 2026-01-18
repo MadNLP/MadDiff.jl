@@ -7,6 +7,13 @@ _zeros_like(x_array, ::Type{T}, n::Int) where {T} = fill!(similar(x_array, T, n)
 _falses_like(x_array, n::Int) = fill!(similar(x_array, Bool, n), false)
 _to_bool_array(x_array, v::BitVector) = convert(Vector{Bool}, v)
 _to_bool_array(x_array, v) = v
+_get_fixed_idx(::MadNLP.AbstractCallback, ref_array) = similar(ref_array, Int, 0)
+function _get_fixed_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, ref_array) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter}
+    fixed = cb.fixed_handler.fixed
+    result = similar(ref_array, eltype(fixed), length(fixed))
+    copyto!(result, fixed)
+    return result
+end
 function _unpack_primal!(v_full, cb::MadNLP.AbstractCallback, v_kkt)
     v_full .= v_kkt
 end
@@ -55,6 +62,9 @@ struct SensitivityDims{VI, VB}
     idx_ub::VI
     var_idx_lb::VI
     var_idx_ub::VI
+    var_lb_pos::VI
+    var_ub_pos::VI
+    fixed_idx::VI
     is_eq::VB
     slack_lb_pos::VI
     slack_lb_con::VI
@@ -144,7 +154,12 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     slack_lb_con = idx_lb[slack_lb_pos] .- n_x_kkt
     slack_ub_con = idx_ub[slack_ub_pos] .- n_x_kkt
 
+    var_lb_pos = findall(.!slack_in_lb)
+    var_ub_pos = findall(.!slack_in_ub)
+    fixed_idx = _get_fixed_idx(solver.cb, idx_lb)
+
     dims = SensitivityDims(n_x, n_con, n_x_kkt, n_lb, n_ub, n_p, idx_lb, idx_ub, var_idx_lb, var_idx_ub,
+                       var_lb_pos, var_ub_pos, fixed_idx,
                        is_eq, slack_lb_pos, slack_lb_con, slack_ub_pos, slack_ub_con)
     kkt = _prepare_sensitivity_kkt(solver, config)
 
@@ -207,8 +222,8 @@ The returned callback computes `grad_p = ∂L/∂p` using:
 - `dg_dp`: `∂g/∂p` - derivative of constraint function w.r.t. p (n_con × n_p)
 - `dlcon_dp`: `∂lcon/∂p` - derivative of constraint lower bounds (n_con × n_p)
 - `ducon_dp`: `∂ucon/∂p` - derivative of constraint upper bounds (n_con × n_p)
-- `dl_dp`: `∂l/∂p` - derivative of variable lower bounds (n_lb × n_p)
-- `du_dp`: `∂u/∂p` - derivative of variable upper bounds (n_ub × n_p)
+- `dl_dp`: `∂l/∂p` - derivative of variable lower bounds (n_x × n_p)
+- `du_dp`: `∂u/∂p` - derivative of variable upper bounds (n_x × n_p)
 
 # Equality Constraint Handling
 For equality constraints (`lcon == ucon`), the contributions from `dlcon_dp` and `ducon_dp`
@@ -232,8 +247,18 @@ function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing
         dλ_scaled .= dλ .* sens.reverse_cache.eq_scale
         _pullback_add!(out, dlcon_dp, dλ_scaled)
         _pullback_add!(out, ducon_dp, dλ_scaled)
-        _pullback_sub!(out, dl_dp, dzl)
-        _pullback_add!(out, du_dp, dzu)
+        dims = sens.dims
+        _pullback_bound!(out, dl_dp, dzl, dims.var_idx_lb, dims.var_lb_pos, Val(:lower))
+        _pullback_bound!(out, du_dp, dzu, dims.var_idx_ub, dims.var_ub_pos, Val(:upper))
         return out
     end
+end
+
+_pullback_bound!(out, ::Nothing, dz, var_idx, var_pos, ::Val{:lower}) = nothing
+_pullback_bound!(out, ::Nothing, dz, var_idx, var_pos, ::Val{:upper}) = nothing
+function _pullback_bound!(out, dp_mat, dz, var_idx, var_pos, ::Val{:lower})
+    @views out .-= dp_mat[var_idx, :]' * dz[var_pos]
+end
+function _pullback_bound!(out, dp_mat, dz, var_idx, var_pos, ::Val{:upper})
+    @views out .+= dp_mat[var_idx, :]' * dz[var_pos]
 end
