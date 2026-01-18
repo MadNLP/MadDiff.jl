@@ -32,30 +32,36 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     end
 
     x = inner.result.solution
+    obj_sign = solver.cb.obj_sign
     VT = typeof(solver.y)
     if VT <: Vector
         y = _get_y_cache!(model, n_con)
         MadNLP.unpack_y!(y, solver.cb, solver.y)
+        # Convert y from MOI convention back to internal convention.
+        # unpack_y! applies obj_sign, so we undo it for the param_jvp formula.
+        y .*= obj_sign
     else
         y_gpu = similar(solver.y, n_con)
         MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
+        # Convert from MOI to internal convention
+        y_gpu .*= obj_sign
         y = Array(y_gpu)
     end
-    Dxp_L_Δp, Dp_g_Δp = compute_param_jvp!(inner, x, y, Δp, ctx)
+    d2L_dxdp, dg_dp = _compute_param_jvp!(inner, x, y, Δp, ctx)
 
     sens = _get_sensitivity_solver!(model)
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.forward_differentiate!(sens; Dxp_L=Dxp_L_Δp, Dp_g=Dp_g_Δp)
+        result = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
         dx_cpu = result.dx
         dλ_cpu = result.dλ
     else
-        Dxp_L_gpu = VT(Dxp_L_Δp)
-        Dp_g_gpu = VT(Dp_g_Δp)
-        result = MadDiff.forward_differentiate!(sens; Dxp_L=Dxp_L_gpu, Dp_g=Dp_g_gpu)
-        dx_cpu = Array(result.dx)
-        dλ_cpu = Array(result.dλ)
+        d2L_dxdp_gpu = d2L_dxdp isa VT ? d2L_dxdp : VT(d2L_dxdp)
+        dg_dp_gpu = dg_dp isa VT ? dg_dp : VT(dg_dp)
+        result = MadDiff.forward_differentiate!(sens; d2L_dxdp=d2L_dxdp_gpu, dg_dp=dg_dp_gpu)
+        dx_cpu = result.dx isa Vector ? result.dx : Array(result.dx)
+        dλ_cpu = result.dλ isa Vector ? result.dλ : Array(result.dλ)
     end
 
     for (i, vi) in enumerate(ctx.primal_vars)
@@ -63,8 +69,10 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     end
 
     dλ = _get_dλ_cache!(model, n_con)
-    # MOI and MadNLP have opposite sign conventions for constraint duals
-    dλ .= .-dλ_cpu
+    # Convert dλ from internal convention to MOI convention.
+    # unpack_y! in forward.jl already applies obj_sign, so we apply -obj_sign
+    # to handle the baseline convention difference (MOI and MadNLP opposite signs).
+    dλ .= (.-obj_sign) .* dλ_cpu
 
     _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dλ)
     _store_bound_dual_sensitivities!(model, sens, result, ctx)

@@ -10,6 +10,8 @@ using CUDA
 using MadNLPGPU
 const MOI = MathOptInterface
 
+ENV["JULIA_TEST_FAILFAST"] = "true"
+
 const CUDA_FUNCTIONAL = CUDA.functional()
 
 @testset "README examples" begin
@@ -27,29 +29,29 @@ const CUDA_FUNCTIONAL = CUDA.functional()
 
         sens = MadDiff.MadDiffSolver(solver)
 
-        Dp_lcon = [2.0;;]  # ∂lcon/∂p (n_con × n_params matrix)
+        dlcon_dp = [2.0;;]  # ∂lcon/∂p (n_con × n_p matrix)
         Δp = [1.0]  # parameter perturbation direction
-        fwd = MadDiff.forward_differentiate!(sens; Dp_lcon=Dp_lcon * Δp)
+        fwd = MadDiff.forward_differentiate!(sens; dlcon_dp=dlcon_dp * Δp)
 
-        dL_dx = [1.0]  # gradient of loss w.r.t. x*
-        vjp = MadDiff.make_param_pullback(Dp_lcon=Dp_lcon)
-        sens_rev = MadDiff.MadDiffSolver(solver; param_pullback=vjp, n_params=1)
-        rev = MadDiff.reverse_differentiate!(sens_rev; dL_dx)
+        seed_x = [1.0]  # gradient of loss w.r.t. x*
+        vjp = MadDiff.make_param_pullback(dlcon_dp=dlcon_dp)
+        sens_rev = MadDiff.MadDiffSolver(solver; param_pullback=vjp, n_p=1)
+        rev = MadDiff.reverse_differentiate!(sens_rev; seed_x)
 
-        @test dot(dL_dx, fwd.dx) ≈ dot(rev.grad_p, Δp)
+        @test dot(seed_x, fwd.dx) ≈ dot(rev.grad_p, Δp)
 
         sens2 = MadDiff.MadDiffSolver(solver; config=MadDiffConfig(kkt_system=MadNLP.SparseUnreducedKKTSystem, regularization=:inertia, reuse_kkt=false))
-        Dp_lcon2 = [2.0;;]  # ∂lcon/∂p (n_con × n_params matrix)
+        dlcon_dp2 = [2.0;;]  # ∂lcon/∂p (n_con × n_p matrix)
         Δp2 = [1.0]  # parameter perturbation direction
-        fwd2 = MadDiff.forward_differentiate!(sens; Dp_lcon=Dp_lcon2 * Δp2)
+        fwd2 = MadDiff.forward_differentiate!(sens; dlcon_dp=dlcon_dp2 * Δp2)
 
-        dL_dx2 = [1.0]  # gradient of loss w.r.t. x*
-        vjp2 = MadDiff.make_param_pullback(Dp_lcon=Dp_lcon2)
-        sens_rev2 = MadDiff.MadDiffSolver(solver; param_pullback=vjp2, n_params=1)
-        rev2 = MadDiff.reverse_differentiate!(sens_rev2; dL_dx=dL_dx2)
+        seed_x2 = [1.0]  # gradient of loss w.r.t. x*
+        vjp2 = MadDiff.make_param_pullback(dlcon_dp=dlcon_dp2)
+        sens_rev2 = MadDiff.MadDiffSolver(solver; param_pullback=vjp2, n_p=1)
+        rev2 = MadDiff.reverse_differentiate!(sens_rev2; seed_x=seed_x2)
 
-        @test dot(dL_dx2, fwd2.dx) ≈ dot(rev2.grad_p, Δp2)
-        @test dot(dL_dx, fwd.dx) ≈ dot(dL_dx2, fwd2.dx)
+        @test dot(seed_x2, fwd2.dx) ≈ dot(rev2.grad_p, Δp2)
+        @test dot(seed_x, fwd.dx) ≈ dot(seed_x2, fwd2.dx)
     end
 
     @testset "DiffOpt API" begin
@@ -127,9 +129,6 @@ const SKIP_PROBLEMS = Set([
     "qp_multi_con",  # dual degeneracy
     "qp_mixed",  # primal degeneracy
     "nlp_trig",  # TODO: investigate (condensed)
-    "qp_max_basic",  # TODO: investigate (fails on CI)
-    "nlp_max_exp",   # TODO: investigate (fails on CI)
-    "nlp_max_quad",  # TODO: investigate (fails on CI)
 ])
 const SKIP_FINITEDIFF = Set([  # TODO: investigate
     "diffopt_nlp_1",
@@ -218,6 +217,52 @@ const SKIP_FINITEDIFF = Set([  # TODO: investigate
                 end
             end
         end
+    end
+end
+
+
+@testset "MaxSense" begin
+    @testset "NLP Equality" begin
+        build = function (m)
+            @variable(m, x >= 0.1, start = 0.5)
+            @variable(m, p in MOI.Parameter(2.0))
+            @constraint(m, p * x == 1.0)
+            @objective(m, Max, -(x - p)^2)
+            return [x], p
+        end
+
+        (dx_mad, dλ_mad, dzl_mad, dzu_mad) = run_maddiff(build; dp = 1.0)
+        (dx_diff, dλ_diff, dzl_diff, dzu_diff) = run_diffopt(build; dp = 1.0)
+
+        @test all(isapprox.(dx_mad, dx_diff; atol = DX_TOL))
+        @test all(isapprox.(dλ_mad, dλ_diff; atol = Dλ_TOL))
+        @test all(isapprox.(dzl_mad, dzl_diff; atol = Dλ_TOL))
+        @test all(isapprox.(dzu_mad, dzu_diff; atol = Dλ_TOL))
+
+        grad_mad = run_maddiff_reverse(build)
+        grad_diff = run_diffopt_reverse(build)
+        @test all(isapprox.(grad_mad, grad_diff; atol = Dλ_TOL))
+    end
+
+    @testset "Active Bound" begin
+        build = function (m)
+            @variable(m, x >= 0.0, start = 0.1)
+            @variable(m, p in MOI.Parameter(-1.0))
+            @objective(m, Max, -(x - p)^2)
+            return [x], p
+        end
+
+        (dx_mad, dλ_mad, dzl_mad, dzu_mad) = run_maddiff(build; dp = 1.0)
+        (dx_diff, dλ_diff, dzl_diff, dzu_diff) = run_diffopt(build; dp = 1.0)
+
+        @test all(isapprox.(dx_mad, dx_diff; atol = DX_TOL))
+        @test all(isapprox.(dλ_mad, dλ_diff; atol = Dλ_TOL))
+        @test all(isapprox.(dzl_mad, dzl_diff; atol = Dλ_TOL))
+        @test all(isapprox.(dzu_mad, dzu_diff; atol = Dλ_TOL))
+
+        grad_mad = run_maddiff_reverse(build)
+        grad_diff = run_diffopt_reverse(build)
+        @test all(isapprox.(grad_mad, grad_diff; atol = Dλ_TOL))
     end
 end
 

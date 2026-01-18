@@ -49,7 +49,7 @@ function _prepare_sensitivity_kkt(solver, config::MadDiffConfig)
 end
 
 function _warn_condensed(kkt, config::MadDiffConfig)
-    typeof(kkt) <: MadNLP.AbstractCondensedKKTSystem && config.warn_condensed_kkt &&
+    typeof(kkt) <: MadNLP.AbstractCondensedKKTSystem && config.should_warn_condensed &&
     @warn "Using condensed KKT may result in poor precision, particularly for dual sensitivities. " *
             "Consider using SparseKKTSystem or SparseUnreducedKKTSystem."
 end

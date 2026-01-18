@@ -20,10 +20,10 @@ mutable struct SensitivityContext{T}
     nlp_evaluator::Union{Nothing, MOI.Nonlinear.Evaluator}
     x_combined::Vector{T}
     p_vals::Vector{T}
-    Dxp_L_Δp::Vector{T}
-    Dp_g_Δp::Vector{T}
+    d2L_dxdp::Vector{T}  # JVP output: ∂²L/∂x∂p * Δp
+    dg_dp::Vector{T}      # JVP output: ∂g/∂p * Δp
     Δp::Vector{T}
-    ∂L_∂p::Vector{T}
+    grad_p::Vector{T}     # VJP output: ∂L/∂p
     v_extended::Vector{T}
     jvp_result::Vector{T}
     hvp_result::Vector{T}

@@ -81,13 +81,13 @@ function MOI.empty!(m::Optimizer)
     empty!(m.vi_to_lb_idx)
     empty!(m.vi_to_ub_idx)
     empty!(m.forward.param_perturbations)
-    empty!(m.reverse.primal_inputs)
-    empty!(m.reverse.dual_inputs)
+    empty!(m.reverse.primal_seeds)
+    empty!(m.reverse.dual_seeds)
     return _invalidate_sensitivity!(m)
 end
 
 function MOI.optimize!(m::Optimizer)
-    _invalidate_sensitivity!(m)
+    _invalidate_factorization!(m)
     return MOI.optimize!(m.inner)
 end
 
@@ -102,8 +102,8 @@ end
 
 function MadDiff.empty_input_sensitivities!(model::Optimizer)
     empty!(model.forward.param_perturbations)
-    empty!(model.reverse.primal_inputs)
-    empty!(model.reverse.dual_inputs)
+    empty!(model.reverse.primal_seeds)
+    empty!(model.reverse.dual_seeds)
     return _clear_outputs!(model)
 end
 
@@ -114,10 +114,14 @@ function _clear_outputs!(m::Optimizer{OT, T}) where {OT, T}
     return m.diff_time = zero(T)
 end
 
-function _invalidate_sensitivity!(m::Optimizer{OT, T}) where {OT, T}
+function _invalidate_factorization!(m::Optimizer{OT, T}) where {OT, T}
     m.sensitivity_solver = nothing
-    m.sensitivity_context = nothing
     return _clear_outputs!(m)
+end
+
+function _invalidate_sensitivity!(m::Optimizer{OT, T}) where {OT, T}
+    m.sensitivity_context = nothing
+    return _invalidate_factorization!(m)
 end
 
 function _get_sensitivity_solver!(model::Optimizer)
@@ -127,11 +131,11 @@ function _get_sensitivity_solver!(model::Optimizer)
             model.inner.solver;
             config = model.sensitivity_config,
             param_pullback = _make_param_pullback_closure(model, ctx),
-            n_params = ctx.n_p,
+            n_p = ctx.n_p,
         )
         dims = model.sensitivity_solver.dims
-        model.ind_lb_cpu = dims.ind_lb isa Vector ? dims.ind_lb : Array(dims.ind_lb)
-        model.ind_ub_cpu = dims.ind_ub isa Vector ? dims.ind_ub : Array(dims.ind_ub)
+        model.idx_lb_cpu = dims.idx_lb isa Vector ? dims.idx_lb : Array(dims.idx_lb)
+        model.idx_ub_cpu = dims.idx_ub isa Vector ? dims.idx_ub : Array(dims.idx_ub)
         _populate_bound_idx_mappings!(model)
     end
     return model.sensitivity_solver
@@ -147,13 +151,13 @@ function _populate_bound_idx_mappings!(model::Optimizer)
     empty!(model.vi_to_lb_idx)
     empty!(model.vi_to_ub_idx)
     dims = sens.dims
-    for (i, kkt_idx) in enumerate(model.ind_lb_cpu)
+    for (i, kkt_idx) in enumerate(model.idx_lb_cpu)
         kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
         moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
         vi = ctx.primal_vars[moi_idx]
         model.vi_to_lb_idx[vi] = i
     end
-    for (i, kkt_idx) in enumerate(model.ind_ub_cpu)
+    for (i, kkt_idx) in enumerate(model.idx_ub_cpu)
         kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
         moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
         vi = ctx.primal_vars[moi_idx]
@@ -177,7 +181,7 @@ end
 
 _get_y_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.y_cache, n)
 _get_dλ_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dλ_cache, n)
-_get_dL_dx!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dx, n)
-_get_dL_dλ!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dλ, n)
-_get_dL_dzl!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzl, n)
-_get_dL_dzu!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzu, n)
+_get_seed_x!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_x, n)
+_get_seed_λ!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_λ, n)
+_get_seed_zl!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_zl, n)
+_get_seed_zu!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_zu, n)

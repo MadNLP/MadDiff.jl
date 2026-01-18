@@ -4,7 +4,7 @@ function MOI.set(
         vi::MOI.VariableIndex,
         value::Real,
     )
-    model.reverse.primal_inputs[vi] = value
+    model.reverse.primal_seeds[vi] = value
     return _clear_outputs!(model)  # keep KKT factorization
 end
 
@@ -14,7 +14,7 @@ function MOI.set(
         ci::MOI.ConstraintIndex,
         value::Real,
     )
-    model.reverse.dual_inputs[ci] = value
+    model.reverse.dual_seeds[ci] = value
     return _clear_outputs!(model)  # keep KKT factorization
 end
 
@@ -24,68 +24,71 @@ function MadDiff.reverse_differentiate!(model::Optimizer)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
 ) where {S <: MOI.GreaterThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
     i = get(vi_to_lb_idx, vi, 0)
-    !iszero(i) && (dL_dzl[i] = val)
+    !iszero(i) && (seed_zl[i] = val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
 ) where {S <: MOI.LessThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
     i = get(vi_to_ub_idx, vi, 0)
-    !iszero(i) && (dL_dzu[i] = -val)
+    !iszero(i) && (seed_zu[i] = -val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
 ) where {S <: MOI.Interval}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
     i_lb = get(vi_to_lb_idx, vi, 0)
     i_ub = get(vi_to_ub_idx, vi, 0)
-    !iszero(i_lb) && (dL_dzl[i_lb] = val)
-    !iszero(i_ub) && (dL_dzu[i_ub] = -val)
+    !iszero(i_lb) && (seed_zl[i_lb] = val)
+    !iszero(i_ub) && (seed_zu[i_ub] = -val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
 ) where {S <: MOI.EqualTo}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
     i_lb = get(vi_to_lb_idx, vi, 0)
     i_ub = get(vi_to_ub_idx, vi, 0)
-    !iszero(i_lb) && (dL_dzl[i_lb] = val)
-    !iszero(i_ub) && (dL_dzu[i_ub] = -val)
+    !iszero(i_lb) && (seed_zl[i_lb] = val)
+    !iszero(i_ub) && (seed_zu[i_ub] = -val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{F, S}, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{F, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
 ) where {F, S}
     row = _constraint_row(inner, ci)
-    dL_dλ[row] = val
+    seed_λ[row] = val
 end
 
 function _make_param_pullback_closure(model, ctx::SensitivityContext{T}) where {T}
-    return function(out, adj_x, adj_λ, adj_zl, adj_zu, sens)
+    return function(out, dx, dλ, dzl, dzu, sens)
         x = model.inner.result.solution
-        n_con = length(adj_λ)
+        n_con = length(dλ)
         solver = model.inner.solver
+        obj_sign = solver.cb.obj_sign
         VT = typeof(solver.y)
         if VT <: Vector
             y = _get_y_cache!(model, n_con)
             MadNLP.unpack_y!(y, solver.cb, solver.y)
-            adj_x_cpu = adj_x
-            adj_λ_cpu = adj_λ
+            y .*= obj_sign
+            dx_cpu = dx
+            dλ_cpu = dλ .* obj_sign
         else
             y_gpu = similar(solver.y, n_con)
             MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
+            y_gpu .*= obj_sign
             y = Array(y_gpu)
-            adj_x_cpu = Array(adj_x)
-            adj_λ_cpu = Array(adj_λ)
+            dx_cpu = dx isa Vector ? dx : Array(dx)
+            dλ_cpu = (dλ isa Vector ? dλ : Array(dλ)) .* obj_sign
         end
 
-        grad_p = _compute_param_pullback!(model.inner, x, y, adj_x_cpu, adj_λ_cpu, ctx)
+        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dλ_cpu, ctx)
         copyto!(out, grad_p)
         return out
     end
@@ -103,36 +106,35 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     n_con = NLPModels.get_ncon(solver.nlp)
     sens = _get_sensitivity_solver!(model)
 
-    dL_dx = _get_dL_dx!(model, ctx.n_x)
-    for (vi, val) in model.reverse.primal_inputs
-        dL_dx[ctx.primal_idx[vi]] = val
+    seed_x = _get_seed_x!(model, ctx.n_x)
+    for (vi, val) in model.reverse.primal_seeds
+        seed_x[ctx.primal_idx[vi]] = val
     end
 
-    dL_dλ = _get_dL_dλ!(model, n_con)
+    seed_λ = _get_seed_λ!(model, n_con)
 
-    dL_dzl = _get_dL_dzl!(model, sens.dims.n_lb)
-    dL_dzu = _get_dL_dzu!(model, sens.dims.n_ub)
+    seed_zl = _get_seed_zl!(model, sens.dims.n_lb)
+    seed_zu = _get_seed_zu!(model, sens.dims.n_ub)
     vi_to_lb_idx = model.vi_to_lb_idx
     vi_to_ub_idx = model.vi_to_ub_idx
 
-    for (ci, val) in model.reverse.dual_inputs
-        _process_reverse_dual_input!(ci, val, inner, dL_dλ, dL_dzl, dL_dzu, vi_to_lb_idx, vi_to_ub_idx)
+    for (ci, val) in model.reverse.dual_seeds
+        _process_reverse_dual_input!(ci, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx)
     end
 
-    # moi and madnlp have opposite conventions
-    dL_dλ .*= -one(T)
+    seed_λ .*= -solver.cb.obj_sign
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+        result = MadDiff.reverse_differentiate!(sens; seed_x, seed_λ, seed_zl, seed_zu)
         grad_p_cpu = result.grad_p
     else
-        dL_dx_gpu = VT(dL_dx)
-        dL_dλ_gpu = VT(dL_dλ)
-        dL_dzl_gpu = VT(dL_dzl)
-        dL_dzu_gpu = VT(dL_dzu)
-        result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dλ=dL_dλ_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu)
-        grad_p_cpu = Array(result.grad_p)
+        seed_x_gpu = seed_x isa VT ? seed_x : VT(seed_x)
+        seed_λ_gpu = seed_λ isa VT ? seed_λ : VT(seed_λ)
+        seed_zl_gpu = seed_zl isa VT ? seed_zl : VT(seed_zl)
+        seed_zu_gpu = seed_zu isa VT ? seed_zu : VT(seed_zu)
+        result = MadDiff.reverse_differentiate!(sens; seed_x=seed_x_gpu, seed_λ=seed_λ_gpu, seed_zl=seed_zl_gpu, seed_zu=seed_zu_gpu)
+        grad_p_cpu = result.grad_p isa Vector ? result.grad_p : Array(result.grad_p)
     end
 
     for (ci, vi) in model.param_ci_to_vi

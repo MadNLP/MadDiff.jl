@@ -6,37 +6,37 @@ import MathOptInterface as MOI
 
 include("moi_evaluator.jl")
 
-mutable struct ForwardModeIO{T}
+mutable struct ForwardModeData{T}
     param_perturbations::Dict{MOI.ConstraintIndex, T}
     primal_sensitivities::Dict{MOI.VariableIndex, T}
     dual_sensitivities::Dict{MOI.ConstraintIndex, T}
 end
-ForwardModeIO{T}() where {T} = ForwardModeIO{T}(
+ForwardModeData{T}() where {T} = ForwardModeData{T}(
     Dict{MOI.ConstraintIndex, T}(),
     Dict{MOI.VariableIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
 )
 
-mutable struct ReverseModeIO{T}
-    primal_inputs::Dict{MOI.VariableIndex, T}
-    dual_inputs::Dict{MOI.ConstraintIndex, T}
+mutable struct ReverseModeData{T}
+    primal_seeds::Dict{MOI.VariableIndex, T}
+    dual_seeds::Dict{MOI.ConstraintIndex, T}
     param_outputs::Dict{MOI.ConstraintIndex, T}
 end
-ReverseModeIO{T}() where {T} = ReverseModeIO{T}(
+ReverseModeData{T}() where {T} = ReverseModeData{T}(
     Dict{MOI.VariableIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
 )
 
-mutable struct WorkVectors{T}
+mutable struct WorkBuffers{T}
     y_cache::Vector{T}
     dλ_cache::Vector{T}
-    dL_dx::Vector{T}
-    dL_dλ::Vector{T}
-    dL_dzl::Vector{T}
-    dL_dzu::Vector{T}
+    seed_x::Vector{T}
+    seed_λ::Vector{T}
+    seed_zl::Vector{T}
+    seed_zu::Vector{T}
 end
-WorkVectors{T}() where {T} = WorkVectors{T}(
+WorkBuffers{T}() where {T} = WorkBuffers{T}(
     Vector{T}(undef, 0),
     Vector{T}(undef, 0),
     Vector{T}(undef, 0),
@@ -48,16 +48,16 @@ WorkVectors{T}() where {T} = WorkVectors{T}(
 mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimizer
     inner::OT
     param_ci_to_vi::Dict{MOI.ConstraintIndex, MOI.VariableIndex}
-    forward::ForwardModeIO{T}
-    reverse::ReverseModeIO{T}
-    work::WorkVectors{T}
+    forward::ForwardModeData{T}
+    reverse::ReverseModeData{T}
+    work::WorkBuffers{T}
     sensitivity_config::MadDiff.MadDiffConfig
     sensitivity_solver::Union{Nothing, MadDiff.MadDiffSolver}
     sensitivity_context::Union{Nothing, SensitivityContext}
     vi_to_lb_idx::Dict{MOI.VariableIndex, Int}
     vi_to_ub_idx::Dict{MOI.VariableIndex, Int}
-    ind_lb_cpu::Vector{Int}
-    ind_ub_cpu::Vector{Int}
+    idx_lb_cpu::Vector{Int}
+    idx_ub_cpu::Vector{Int}
     diff_time::T
 end
 
@@ -65,9 +65,9 @@ function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimi
     return Optimizer{OT, T}(
         inner,
         Dict{MOI.ConstraintIndex, MOI.VariableIndex}(),
-        ForwardModeIO{T}(),
-        ReverseModeIO{T}(),
-        WorkVectors{T}(),
+        ForwardModeData{T}(),
+        ReverseModeData{T}(),
+        WorkBuffers{T}(),
         MadDiff.MadDiffConfig(),
         nothing,
         nothing,

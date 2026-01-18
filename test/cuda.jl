@@ -37,11 +37,11 @@ else
 
             sens = MadDiff.MadDiffSolver(solver)
 
-            # ∇xpL = zeros (no parameter-primal cross terms)
-            # ∇pg = -1 (perturbation of constraint RHS)
-            Dxp_L = CuArray([0.0, 0.0])
-            Dp_g = CuArray([-1.0])
-            result = MadDiff.forward_differentiate!(sens; Dxp_L, Dp_g)
+            # d²L/dxdp = zeros (no parameter-primal cross terms)
+            # dg/dp = -1 (perturbation of constraint RHS)
+            d2L_dxdp = CuArray([0.0, 0.0])
+            dg_dp = CuArray([-1.0])
+            result = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
 
             # Verify results are CuArrays
             @test result.dx isa CuArray
@@ -63,21 +63,21 @@ else
 
             sens = MadDiff.MadDiffSolver(solver)
 
-            dL_dx = CuArray([1.0, 1.0])
+            seed_x = CuArray([1.0, 1.0])
 
-            result = MadDiff.reverse_differentiate!(sens; dL_dx)
+            result = MadDiff.reverse_differentiate!(sens; seed_x)
 
             # Verify results are CuArrays
-            @test result.adj_x isa CuArray
-            @test result.adj_λ isa CuArray
-            @test result.adj_zl isa CuArray
-            @test result.adj_zu isa CuArray
+            @test result.dx isa CuArray
+            @test result.dλ isa CuArray
+            @test result.dzl isa CuArray
+            @test result.dzu isa CuArray
 
-            adj_x = Vector(result.adj_x)
-            adj_λ = Vector(result.adj_λ)  # equality constraint dual adjoint
+            dx = Vector(result.dx)
+            dλ = Vector(result.dλ)  # equality constraint dual adjoint
 
-            @test isapprox(adj_x, [0.0, 0.0]; atol = 1.0e-4)
-            @test isapprox(adj_λ, [1.0]; atol = 1.0e-4)
+            @test isapprox(dx, [0.0, 0.0]; atol = 1.0e-4)
+            @test isapprox(dλ, [1.0]; atol = 1.0e-4)
         end
 
         @testset "Forward-Reverse" begin
@@ -90,21 +90,21 @@ else
 
             sens = MadDiff.MadDiffSolver(solver)
 
-            Dxp_L = CuArray([0.0, 0.0])
-            Dp_g = CuArray([-1.0])
+            d2L_dxdp = CuArray([0.0, 0.0])
+            dg_dp = CuArray([-1.0])
 
-            fwd = MadDiff.forward_differentiate!(sens; Dxp_L, Dp_g)
+            fwd = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
             dx_dp = Vector(fwd.dx)
 
-            dL_dx = CuArray([1.0, 1.0])
-            rev = MadDiff.reverse_differentiate!(sens; dL_dx)
+            seed_x = CuArray([1.0, 1.0])
+            rev = MadDiff.reverse_differentiate!(sens; seed_x)
 
             dloss_dp_fwd = dot([1.0, 1.0], dx_dp)
 
-            adj_x = Vector(rev.adj_x)
-            adj_λ = Vector(rev.adj_λ)  # equality constraint dual adjoint
-            # dL/dp = -(adj_x · Dxp_L + adj_λ · Dp_g) relates forward and reverse sensitivities
-            dloss_dp_rev = -(dot(adj_x, [0.0, 0.0]) + dot(adj_λ, [-1.0]))
+            dx = Vector(rev.dx)
+            dλ = Vector(rev.dλ)  # equality constraint dual adjoint
+            # dL/dp = -(dx · d2L_dxdp + dλ · dg_dp) relates forward and reverse sensitivities
+            dloss_dp_rev = -(dot(dx, [0.0, 0.0]) + dot(dλ, [-1.0]))
 
             @test isapprox(dloss_dp_fwd, dloss_dp_rev; atol = 1.0e-6)
         end
