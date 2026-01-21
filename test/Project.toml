@@ -15,7 +15,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-DiffOpt = {rev = "mk/fix_nlp_bounds", url = "https://github.com/klamike/DiffOpt.jl.git"}
+DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
 MadDiff = {path = ".."}
 MadNLP = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
 MadNLPGPU = {rev = "mk/fixmoigpu_madnlpgpu", subdir="lib/MadNLPGPU", url = "https://github.com/klamike/MadNLP.jl.git"}
