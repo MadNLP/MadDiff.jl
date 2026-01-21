@@ -287,8 +287,8 @@ function _scale_seed_λ(seed_λ, cb, cache)
     return cache
 end
 
-_scale_seed_z!(::Nothing, cb, cache) = nothing
-function _scale_seed_z!(seed_z, cb, cache)
+_scale_seed_z(::Nothing, cb, cache) = nothing
+function _scale_seed_z(seed_z, cb, cache)
     copyto!(cache, seed_z)
     cache ./= cb.obj_scale[]
     return cache
