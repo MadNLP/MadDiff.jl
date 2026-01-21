@@ -409,6 +409,124 @@ end
     end
 end
 
+@testset "Single variable seed reverse mode" begin
+    @testset "Single seed - linear constraint" begin
+        function build_single_seed(m)
+            @variable(m, x, start=0.5)
+            @variable(m, y, start=0.5)
+            @variable(m, z, start=1.0)
+            @variable(m, p in MOI.Parameter(1.0))
+            @variable(m, q in MOI.Parameter(1.0))
+            @constraint(m, x + y == p)
+            @constraint(m, z == q)
+            @objective(m, Min, x^2 + y^2 + z^2)
+            return [x, y, z], [p, q]
+        end
+
+        model_mad = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+        set_silent(model_mad)
+        vars_mad, params_mad = build_single_seed(model_mad)
+        optimize!(model_mad)
+
+        DiffOpt.empty_input_sensitivities!(model_mad)
+        MOI.set(model_mad, DiffOpt.ReverseVariablePrimal(), vars_mad[1], 1.0)  # only x
+        DiffOpt.reverse_differentiate!(model_mad)
+        grad_p_mad = MOI.get(model_mad, DiffOpt.ReverseConstraintSet(), ParameterRef(params_mad[1])).value
+        grad_q_mad = MOI.get(model_mad, DiffOpt.ReverseConstraintSet(), ParameterRef(params_mad[2])).value
+
+        model_diff = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_diff, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_diff)
+        vars_diff, params_diff = build_single_seed(model_diff)
+        optimize!(model_diff)
+
+        DiffOpt.empty_input_sensitivities!(model_diff)
+        MOI.set(model_diff, DiffOpt.ReverseVariablePrimal(), vars_diff[1], 1.0)  # only x
+        DiffOpt.reverse_differentiate!(model_diff)
+        grad_p_diff = MOI.get(model_diff, DiffOpt.ReverseConstraintSet(), ParameterRef(params_diff[1])).value
+        grad_q_diff = MOI.get(model_diff, DiffOpt.ReverseConstraintSet(), ParameterRef(params_diff[2])).value
+
+        function solve_and_get_x(p_val, q_val)
+            m = Model(MadNLP.Optimizer)
+            set_silent(m)
+            @variable(m, x, start=0.5)
+            @variable(m, y, start=0.5)
+            @variable(m, z, start=1.0)
+            @constraint(m, x + y == p_val)
+            @constraint(m, z == q_val)
+            @objective(m, Min, x^2 + y^2 + z^2)
+            optimize!(m)
+            return value(x)
+        end
+
+        eps = 1e-6
+        x_base = solve_and_get_x(1.0, 1.0)
+        grad_p_fd = (solve_and_get_x(1.0 + eps, 1.0) - x_base) / eps
+        grad_q_fd = (solve_and_get_x(1.0, 1.0 + eps) - x_base) / eps
+
+        @test isapprox(grad_p_mad, grad_p_fd; atol=1e-4)
+        @test isapprox(grad_q_mad, grad_q_fd; atol=1e-4)
+        @test isapprox(grad_p_diff, grad_p_fd; atol=1e-4)
+        @test isapprox(grad_q_diff, grad_q_fd; atol=1e-4)
+        @test isapprox(grad_p_mad, grad_p_diff; atol=1e-4)
+        @test isapprox(grad_q_mad, grad_q_diff; atol=1e-4)
+    end
+
+    @testset "Single seed - NLP with multiple parameters" begin
+        function build_nlp_multi_param(m)
+            @variable(m, x[1:3] >= 0, start=1.0)
+            @variable(m, p[1:3] in MOI.Parameter.([1.0, 0.5, 0.3]))
+            @constraint(m, x[1] + x[2] == p[1] + p[2])
+            @constraint(m, x[2] + x[3] == p[2] + p[3])
+            @objective(m, Min, sum(x[i]^2 for i in 1:3))
+            return x, p
+        end
+
+        model_mad = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+        set_silent(model_mad)
+        vars_mad, params_mad = build_nlp_multi_param(model_mad)
+        optimize!(model_mad)
+
+        DiffOpt.empty_input_sensitivities!(model_mad)
+        MOI.set(model_mad, DiffOpt.ReverseVariablePrimal(), vars_mad[1], 1.0)
+        DiffOpt.reverse_differentiate!(model_mad)
+        grad_mad = [MOI.get(model_mad, DiffOpt.ReverseConstraintSet(), ParameterRef(params_mad[i])).value for i in 1:3]
+
+        model_diff = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_diff, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_diff)
+        vars_diff, params_diff = build_nlp_multi_param(model_diff)
+        optimize!(model_diff)
+
+        DiffOpt.empty_input_sensitivities!(model_diff)
+        MOI.set(model_diff, DiffOpt.ReverseVariablePrimal(), vars_diff[1], 1.0)
+        DiffOpt.reverse_differentiate!(model_diff)
+        grad_diff = [MOI.get(model_diff, DiffOpt.ReverseConstraintSet(), ParameterRef(params_diff[i])).value for i in 1:3]
+
+        function solve_and_get_x1(p_vals)
+            m = Model(MadNLP.Optimizer)
+            set_silent(m)
+            @variable(m, x[1:3] >= 0, start=1.0)
+            @constraint(m, x[1] + x[2] == p_vals[1] + p_vals[2])
+            @constraint(m, x[2] + x[3] == p_vals[2] + p_vals[3])
+            @objective(m, Min, sum(x[i]^2 for i in 1:3))
+            optimize!(m)
+            return value(x[1])
+        end
+
+        eps = 1e-6
+        p_base = [1.0, 0.5, 0.3]
+        x1_base = solve_and_get_x1(p_base)
+        grad_fd = [(solve_and_get_x1(p_base .+ eps .* (1:3 .== i)) - x1_base) / eps for i in 1:3]
+
+        for i in 1:3
+            @test isapprox(grad_mad[i], grad_fd[i]; atol=1e-3)
+            @test isapprox(grad_diff[i], grad_fd[i]; atol=1e-3)
+        end
+        @test all(isapprox.(grad_mad, grad_diff; atol=1e-4))
+    end
+end
+
 @testset "MOI" begin
     model = MOI.Utilities.CachingOptimizer(
         MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),

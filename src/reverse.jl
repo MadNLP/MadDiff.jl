@@ -68,11 +68,10 @@ function reverse_differentiate!(
     cache = _get_reverse_cache!(sens)
     cb = sens.solver.cb
 
-    # Copy and scale inputs (don't modify user arrays)
-    seed_x_kkt = _scale_seed_x(seed_x, cb)  # _pack_primal already copies
-    seed_λ_scaled = _scale_seed_λ(seed_λ, cb, cache.seed_λ_cache)  # copies to cache
-    seed_zl_scaled = _copy_and_scale_seed_z(seed_zl, cb, cache.seed_zl_cache)
-    seed_zu_scaled = _copy_and_scale_seed_z(seed_zu, cb, cache.seed_zu_cache)
+    seed_x_kkt = _scale_seed_x(seed_x, cb)
+    seed_λ_scaled = _scale_seed_λ(seed_λ, cb, cache.seed_λ_cache)
+    seed_zl_scaled = _scale_seed_z(seed_zl, cb, cache.seed_zl_cache)
+    seed_zu_scaled = _scale_seed_z(seed_zu, cb, cache.seed_zu_cache)
 
     sol = _solve_vjp!(sens.kkt, cache.work, seed_x_kkt, seed_λ_scaled, seed_zl_scaled, seed_zu_scaled)
 
@@ -81,10 +80,10 @@ function reverse_differentiate!(
 
     MadNLP.unpack_y!(cache.dλ, cb, cache.dλ)
 
-    # Copy to user-owned result
     copyto!(result.dx, cache.dx_full)
-    copyto!(result.dλ, cache.dλ)
-    obj_scale_inv = inv(cb.obj_scale[])
+    obj_scale = cb.obj_scale[]
+    obj_scale_inv = inv(obj_scale)
+    result.dλ .= cache.dλ .* obj_scale
     result.dzl .= cache.dzl .* obj_scale_inv
     result.dzu .= cache.dzu .* obj_scale_inv
 
@@ -288,11 +287,8 @@ function _scale_seed_λ(seed_λ, cb, cache)
     return cache
 end
 
-_scale_seed_z!(::Nothing, cb) = nothing
-_scale_seed_z!(seed_z, cb) = (seed_z ./= cb.obj_scale[])
-
-_copy_and_scale_seed_z(::Nothing, cb, cache) = nothing
-function _copy_and_scale_seed_z(seed_z, cb, cache)
+_scale_seed_z!(::Nothing, cb, cache) = nothing
+function _scale_seed_z!(seed_z, cb, cache)
     copyto!(cache, seed_z)
     cache ./= cb.obj_scale[]
     return cache
