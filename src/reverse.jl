@@ -65,29 +65,30 @@ function reverse_differentiate!(
     isnothing(seed_zl) || @lencheck dims.n_x seed_zl
     isnothing(seed_zu) || @lencheck dims.n_x seed_zu
 
+    shared = _get_shared_cache!(sens)
     cache = _get_reverse_cache!(sens)
     cb = sens.solver.cb
 
-    seed_x_kkt = _scale_seed_x(seed_x, cb)
-    seed_λ_scaled = _scale_seed_λ(seed_λ, cb, cache.seed_λ_cache)
-    _pack_seed_zl!(cache.seed_zl_cache, seed_zl, cb, cache.primal_buffer)
-    _pack_seed_zu!(cache.seed_zu_cache, seed_zu, cb, cache.primal_buffer)
+    seed_x_kkt = _pack_seed_x!(cache.seed_x, seed_x, cb)
+    seed_λ_scaled = _pack_seed_λ!(cache.seed_λ, seed_λ, cb)
+    _pack_seed_z!(cache.seed_zl, seed_zl, cb, shared.zl_buffer, shared.zl_buffer.values_lr)
+    _pack_seed_z!(cache.seed_zu, seed_zu, cb, shared.zu_buffer, shared.zu_buffer.values_ur)
 
-    sol = _solve_vjp!(sens.kkt, cache.work, seed_x_kkt, seed_λ_scaled, cache.seed_zl_cache, cache.seed_zu_cache)
+    sol = _solve_vjp!(sens.kkt, shared.rhs, seed_x_kkt, seed_λ_scaled, cache.seed_zl, cache.seed_zu)
 
-    _extract_sensitivities!(cache.dx_kkt, cache.dλ, cache.dzl_kkt, cache.dzu_kkt, sol, sens.solver)
-    _unpack_primal!(cache.dx_full, cb, cache.dx_kkt)
+    _extract_sensitivities!(shared.dx_kkt, shared.dλ, shared.dzl_kkt, shared.dzu_kkt, sol, sens.solver)
+    _unpack_primal!(shared.dx_full, cb, shared.dx_kkt)
 
-    MadNLP.unpack_y!(cache.dλ, cb, cache.dλ)
+    MadNLP.unpack_y!(shared.dλ, cb, shared.dλ)
 
-    copyto!(result.dx, cache.dx_full)
-    result.dλ .= cache.dλ .* cb.obj_scale[]  #FIXME undo obj_scale?
-    _unpack_zl!(result.dzl, cb, cache.dzl_kkt, cache.primal_buffer)
-    _unpack_zu!(result.dzu, cb, cache.dzu_kkt, cache.primal_buffer)
+    copyto!(result.dx, shared.dx_full)
+    result.dλ .= shared.dλ .* cb.obj_scale[]  #FIXME undo obj_scale?
+    _unpack_z!(result.dzl, cb, shared.dzl_kkt, shared.zl_buffer, shared.zl_buffer.values_lr)
+    _unpack_z!(result.dzu, cb, shared.dzu_kkt, shared.zu_buffer, shared.zu_buffer.values_ur)
 
     if !isnothing(sens.param_pullback) && !isnothing(result.grad_p)
-        sens.param_pullback(cache.grad_p_cache, result.dx, result.dλ, result.dzl, result.dzu, sens)
-        copyto!(result.grad_p, cache.grad_p_cache)
+        sens.param_pullback(cache.grad_p, result.dx, result.dλ, result.dzl, result.dzu, sens)
+        copyto!(result.grad_p, cache.grad_p)
     end
 
     return result
@@ -136,46 +137,31 @@ function reverse_differentiate!(solver::MadNLP.AbstractMadNLPSolver; seed_x = no
     return reverse_differentiate!(sens; seed_x, seed_λ, seed_zl, seed_zu)
 end
 
-struct ReverseCache{VT, VK, PV}
-    work::VK
-    dzl_kkt::VT
-    dzu_kkt::VT
-    dλ::VT
-    dx_full::VT
-    primal_buffer::PV
-    seed_λ_cache::VT
-    seed_zl_cache::VT
-    seed_zu_cache::VT
+struct ReverseCache{VT}
+    seed_x::VT
+    seed_λ::VT
+    seed_zl::VT
+    seed_zu::VT
     eq_scale::VT
-    grad_p_cache::VT
-    dλ_scaled_cache::VT
-    dx_kkt::VT
+    grad_p::VT
+    dλ_scaled::VT
 end
 
 function _get_reverse_cache!(sens::MadDiffSolver)
     if isnothing(sens.reverse_cache)
+        cb = sens.solver.cb
         dims = sens.dims
         x_array = MadNLP.full(sens.solver.x)
         T = eltype(x_array)
-        VT = typeof(x_array)
-
-        eq_scale = _zeros_like(x_array, T, dims.n_con)
-        eq_scale .= ifelse.(dims.is_eq, T(1 // 2), one(T))
 
         sens.reverse_cache = ReverseCache(
-            MadNLP.UnreducedKKTVector(sens.kkt),
-            _zeros_like(x_array, T, dims.n_lb),
-            _zeros_like(x_array, T, dims.n_ub),
+            _zeros_like(x_array, T, cb.nvar),
             _zeros_like(x_array, T, dims.n_con),
-            _zeros_like(x_array, T, dims.n_x),
-            MadNLP.PrimalVector(VT, dims.n_x_kkt, dims.n_slack, dims.idx_lb, dims.idx_ub),
-            _zeros_like(x_array, T, dims.n_con),
-            _zeros_like(x_array, T, dims.n_lb),
-            _zeros_like(x_array, T, dims.n_ub),
-            eq_scale,
+            _zeros_like(x_array, T, length(cb.ind_lb)),
+            _zeros_like(x_array, T, length(cb.ind_ub)),
+            ifelse.(dims.is_eq, T(1 // 2), one(T)),
             _zeros_like(x_array, T, dims.n_p),
             _zeros_like(x_array, T, dims.n_con),
-            _zeros_like(x_array, T, dims.n_x_kkt),
         )
     end
     return sens.reverse_cache
@@ -194,6 +180,7 @@ function _vjp_pre!(kkt, w, seed_x, seed_λ, seed_zl, seed_zu)
     _vjp_set_dual_rhs!(MadNLP.dual(w), seed_λ)
     _vjp_set_bound_lower!(kkt, w.xp_lr, seed_zl)
     _vjp_set_bound_upper!(kkt, w.xp_ur, seed_zu)
+    return nothing
 end
 function _vjp_pre!(kkt::MadNLP.SparseUnreducedKKTSystem, w, seed_x, seed_λ, seed_zl, seed_zu)
     fill!(MadNLP.full(w), zero(eltype(MadNLP.full(w))))
@@ -201,89 +188,83 @@ function _vjp_pre!(kkt::MadNLP.SparseUnreducedKKTSystem, w, seed_x, seed_λ, see
     _vjp_set_dual_rhs!(MadNLP.dual(w), seed_λ)
     _vjp_set_bound_lower!(kkt, MadNLP.dual_lb(w), seed_zl)
     _vjp_set_bound_upper!(kkt, MadNLP.dual_ub(w), seed_zu)
+    return nothing
 end
 
 function _vjp_solve!(kkt::MadNLP.AbstractReducedKKTSystem, w)
     MadNLP.solve!(kkt.linear_solver, MadNLP.primal_dual(w))
+    return nothing
 end
 function _vjp_solve!(kkt::MadNLP.AbstractCondensedKKTSystem, w)
     MadNLP.solve!(kkt, w)
+    return nothing
 end
 function _vjp_solve!(kkt::MadNLP.SparseUnreducedKKTSystem, w)
     MadNLP.solve!(kkt.linear_solver, MadNLP.full(w))
+    return nothing
 end
 function _vjp_solve!(kkt::MadNLP.ScaledSparseKKTSystem, w)
     MadNLP.primal(w) .*= kkt.scaling_factor
     MadNLP.solve!(kkt.linear_solver, MadNLP.primal_dual(w))
     MadNLP.primal(w) .*= kkt.scaling_factor
+    return nothing
 end
 
 function _vjp_post!(kkt, w)
     MadNLP.dual_lb(w) .= kkt.l_lower .* w.xp_lr ./ kkt.l_diag
     MadNLP.dual_ub(w) .= .-kkt.u_lower .* w.xp_ur ./ kkt.u_diag
+    return nothing
 end
 function _vjp_post!(kkt::MadNLP.ScaledSparseKKTSystem, w)
     MadNLP.dual_lb(w) .= .-kkt.l_lower .* w.xp_lr ./ kkt.l_diag
     MadNLP.dual_ub(w) .= kkt.u_lower .* w.xp_ur ./ kkt.u_diag
+    return nothing
 end
 function _vjp_post!(kkt::MadNLP.SparseUnreducedKKTSystem, w)
     MadNLP.dual_lb(w) .*= .-kkt.l_lower_aug
     MadNLP.dual_ub(w) .*= kkt.u_lower_aug
+    return nothing
 end
 
 _vjp_set_bound_lower!(kkt, xp_lr, ::Nothing) = nothing
 _vjp_set_bound_upper!(kkt, xp_ur, ::Nothing) = nothing
 function _vjp_set_bound_lower!(kkt, xp_lr, seed_zl)
     xp_lr .+= kkt.l_lower .* seed_zl ./ kkt.l_diag
+    return nothing
 end
 function _vjp_set_bound_upper!(kkt, xp_ur, seed_zu)
     xp_ur .-= kkt.u_lower .* seed_zu ./ kkt.u_diag
+    return nothing
 end
 function _vjp_set_bound_lower!(kkt::MadNLP.ScaledSparseKKTSystem, xp_lr, seed_zl)
     xp_lr .-= kkt.l_lower .* seed_zl ./ kkt.l_diag
+    return nothing
 end
 function _vjp_set_bound_upper!(kkt::MadNLP.ScaledSparseKKTSystem, xp_ur, seed_zu)
     xp_ur .+= kkt.u_lower .* seed_zu ./ kkt.u_diag
+    return nothing
 end
 function _vjp_set_bound_lower!(kkt::MadNLP.SparseUnreducedKKTSystem, wz, seed_zl)
     wz .= seed_zl
     wz .*= .-kkt.l_lower_aug
+    return nothing
 end
 function _vjp_set_bound_upper!(kkt::MadNLP.SparseUnreducedKKTSystem, wz, seed_zu)
     wz .= seed_zu
     wz .*= kkt.u_lower_aug
+    return nothing
 end
-# disambiguation
 _vjp_set_bound_lower!(::MadNLP.SparseUnreducedKKTSystem, wz, ::Nothing) = nothing  # COV_EXCL_LINE
 _vjp_set_bound_upper!(::MadNLP.SparseUnreducedKKTSystem, wz, ::Nothing) = nothing  # COV_EXCL_LINE
 _vjp_set_bound_lower!(::MadNLP.ScaledSparseKKTSystem, xp, ::Nothing) = nothing  # COV_EXCL_LINE
 _vjp_set_bound_upper!(::MadNLP.ScaledSparseKKTSystem, xp, ::Nothing) = nothing  # COV_EXCL_LINE
 
-_scale_seed_x(::Nothing, cb) = nothing
-_scale_seed_x(seed_x, cb) = _pack_primal(seed_x, cb)
-
-_scale_seed_λ(::Nothing, cb, cache) = nothing
-function _scale_seed_λ(seed_λ, cb, cache)
-    MadNLP.unpack_y!(cache, cb, seed_λ)
-    return cache
-end
-
-_pack_seed_zl!(cache, ::Nothing, cb, ::MadNLP.PrimalVector) = fill!(cache, zero(eltype(cache)))
-_pack_seed_zu!(cache, ::Nothing, cb, ::MadNLP.PrimalVector) = fill!(cache, zero(eltype(cache)))
-function _pack_seed_zl!(cache, seed_z, cb, pv::MadNLP.PrimalVector)
-    _scatter_to_primal_vector!(pv, seed_z, cb)
-    cache .= pv.values_lr ./ cb.obj_scale[]
-end
-function _pack_seed_zu!(cache, seed_z, cb, pv::MadNLP.PrimalVector)
-    _scatter_to_primal_vector!(pv, seed_z, cb)
-    cache .= pv.values_ur ./ cb.obj_scale[]
-end
-
 _vjp_set_dual_rhs!(dest, ::Nothing) = nothing
-_vjp_set_dual_rhs!(dest, src) = dest .= src
+_vjp_set_dual_rhs!(dest, src) = (dest .= src;)
 
 _vjp_set_primal_rhs!(w, ::Nothing) = nothing
 function _vjp_set_primal_rhs!(w, seed_x)
     n_x = length(seed_x)
     MadNLP.primal(w)[1:n_x] .= seed_x
+    return nothing
 end

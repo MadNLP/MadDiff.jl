@@ -5,6 +5,7 @@ const NLPModels = MadNLP.NLPModels
 import MadNLP.NLPModels: @lencheck
 import LinearAlgebra: dot, mul!
 
+include("utils.jl")
 include("api.jl")
 include("kkt.jl")
 include("forward.jl")

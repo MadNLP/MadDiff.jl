@@ -1,42 +1,3 @@
-# TODO: ask for this from madnlp
-_pack_primal(v, cb::MadNLP.AbstractCallback) = copy(v)
-_pack_primal(v, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = v[cb.fixed_handler.free]
-_kkt_to_full_idx(cb::MadNLP.AbstractCallback, kkt_idx) = kkt_idx
-_kkt_to_full_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, kkt_idx) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = cb.fixed_handler.free[kkt_idx]
-_zeros_like(x_array, ::Type{T}, n::Int) where {T} = fill!(similar(x_array, T, n), zero(T))
-_falses_like(x_array, n::Int) = fill!(similar(x_array, Bool, n), false)
-_to_bool_array(x_array, v::BitVector) = convert(Vector{Bool}, v)
-_to_bool_array(x_array, v) = v
-_get_fixed_idx(::MadNLP.AbstractCallback, ref_array) = similar(ref_array, Int, 0)
-function _get_fixed_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, ref_array) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter}
-    fixed = cb.fixed_handler.fixed
-    result = similar(ref_array, eltype(fixed), length(fixed))
-    copyto!(result, fixed)
-    return result
-end
-function _unpack_primal!(v_full, cb::MadNLP.AbstractCallback, v_kkt)
-    v_full .= v_kkt
-end
-function _unpack_primal!(v_full, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, v_kkt) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter}
-    fill!(v_full, zero(eltype(v_full)))
-    v_full[cb.fixed_handler.free] .= v_kkt
-end
-
-function _unpack_zl!(z_full, cb, z_kkt, pv::MadNLP.PrimalVector)
-    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
-    pv.values_lr .= z_kkt
-    MadNLP.unpack_z!(z_full, cb, MadNLP.variable(pv))
-end
-function _unpack_zu!(z_full, cb, z_kkt, pv::MadNLP.PrimalVector)
-    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
-    pv.values_ur .= z_kkt
-    MadNLP.unpack_z!(z_full, cb, MadNLP.variable(pv))
-end
-
-function _scatter_to_primal_vector!(pv::MadNLP.PrimalVector, v_full, cb)
-    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
-    MadNLP.variable(pv) .= _pack_primal(v_full, cb)
-end
 
 """
     MadDiffConfig(; kwargs...)
@@ -70,19 +31,9 @@ end
 struct SensitivityDims{VI, VB}
     n_x::Int
     n_con::Int
-    n_x_kkt::Int
-    n_slack::Int
-    n_lb::Int
-    n_ub::Int
     n_p::Int
-    idx_lb::VI
-    idx_ub::VI
     fixed_idx::VI
     is_eq::VB
-    slack_lb_pos::VI
-    slack_lb_con::VI
-    slack_ub_pos::VI
-    slack_ub_con::VI
 end
 
 
@@ -118,12 +69,13 @@ rev_result = reverse_differentiate!(sens; dL_dx)
 mutable struct MadDiffSolver{
     KKT <: MadNLP.AbstractKKTSystem,
     Solver <: MadNLP.AbstractMadNLPSolver,
-    VI, VB, FC, RC, F,
+    VI, VB, SC, FC, RC, F,
 }
     solver::Solver
     config::MadDiffConfig
     kkt::KKT
     dims::SensitivityDims{VI, VB}
+    shared_cache::Union{Nothing, SC}
     forward_cache::Union{Nothing, FC}
     reverse_cache::Union{Nothing, RC}
     param_pullback::F
@@ -143,47 +95,34 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
         throw(ArgumentError("n_p must be provided when param_pullback is given"))
     end
 
+    cb = solver.cb
     n_x = NLPModels.get_nvar(solver.nlp)
     n_con = NLPModels.get_ncon(solver.nlp)
-    n_x_kkt = solver.cb.nvar
-    n_slack = length(solver.cb.ind_ineq)
-    idx_lb = solver.cb.ind_lb
-    idx_ub = solver.cb.ind_ub
-    n_lb = length(idx_lb)
-    n_ub = length(idx_ub)
 
     lcon = NLPModels.get_lcon(solver.nlp)
     ucon = NLPModels.get_ucon(solver.nlp)
     x_array = MadNLP.full(solver.x)
     is_eq = _to_bool_array(x_array, isfinite.(lcon) .& (lcon .== ucon))
+    fixed_idx = _get_fixed_idx(cb, cb.ind_lb)
 
-    slack_in_lb = idx_lb .> n_x_kkt
-    slack_in_ub = idx_ub .> n_x_kkt
-    slack_lb_pos = findall(slack_in_lb)
-    slack_ub_pos = findall(slack_in_ub)
-    slack_lb_con = idx_lb[slack_lb_pos] .- n_x_kkt
-    slack_ub_con = idx_ub[slack_ub_pos] .- n_x_kkt
-
-    fixed_idx = _get_fixed_idx(solver.cb, idx_lb)
-
-    dims = SensitivityDims(n_x, n_con, n_x_kkt, n_slack, n_lb, n_ub, n_p, idx_lb, idx_ub, fixed_idx,
-                       is_eq, slack_lb_pos, slack_lb_con, slack_ub_pos, slack_ub_con)
+    dims = SensitivityDims(n_x, n_con, n_p, fixed_idx, is_eq)
     kkt = _prepare_sensitivity_kkt(solver, config)
 
     T = eltype(x_array)
     KKT = typeof(kkt)
     Solver = typeof(solver)
-    VI = typeof(idx_lb)
+    VI = typeof(cb.ind_lb)
     VB = typeof(is_eq)
     VT = typeof(x_array)
     VK = MadNLP.UnreducedKKTVector{T,VT,VI}
     PV = MadNLP.PrimalVector{T,VT,VI}
-    FC = ForwardCache{VT, VK, PV}
-    RC = ReverseCache{VT, VK, PV}
+    SC = SharedCache{VT, VK, PV}
+    FC = ForwardCache{VT}
+    RC = ReverseCache{VT}
     F = typeof(param_pullback)
-    return MadDiffSolver{KKT, Solver, VI, VB, FC, RC, F}(
+    return MadDiffSolver{KKT, Solver, VI, VB, SC, FC, RC, F}(
         solver, config, kkt, dims,
-        nothing, nothing,
+        nothing, nothing, nothing,
         param_pullback,
     )
 end
@@ -198,22 +137,11 @@ sensitivities reflect the latest solution/problem.
 If not called, sensitivities will be incorrect!
 """
 function reset_sensitivity_cache!(sens::MadDiffSolver)
+    sens.shared_cache = nothing
     sens.forward_cache = nothing
     sens.reverse_cache = nothing
     sens.kkt = _prepare_sensitivity_kkt(sens.solver, sens.config)
     return sens
-end
-
-_pullback_sub!(out, ::Nothing, v) = nothing
-function _pullback_sub!(out, M, v)
-    @lencheck size(M, 1) v
-    out .-= M' * v
-end
-
-_pullback_add!(out, ::Nothing, v) = nothing
-function _pullback_add!(out, M, v)
-    @lencheck size(M, 1) v
-    out .+= M' * v
 end
 
 """
@@ -251,21 +179,12 @@ function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing
         fill!(out, zero(eltype(out)))
         _pullback_sub!(out, d2L_dxdp, dx)
         _pullback_sub!(out, dg_dp, dλ)
-        dλ_scaled = sens.reverse_cache.dλ_scaled_cache
+        dλ_scaled = sens.reverse_cache.dλ_scaled
         dλ_scaled .= dλ .* sens.reverse_cache.eq_scale
         _pullback_add!(out, dlcon_dp, dλ_scaled)
         _pullback_add!(out, ducon_dp, dλ_scaled)
-        _pullback_bound_lower!(out, dl_dp, dzl)
-        _pullback_bound_upper!(out, du_dp, dzu)
+        _pullback_sub!(out, dl_dp, dzl)
+        _pullback_add!(out, du_dp, dzu)
         return out
     end
-end
-
-_pullback_bound_lower!(out, ::Nothing, dz) = nothing
-_pullback_bound_upper!(out, ::Nothing, dz) = nothing
-function _pullback_bound_lower!(out, dp_mat, dz)
-    out .-= dp_mat' * dz
-end
-function _pullback_bound_upper!(out, dp_mat, dz)
-    out .+= dp_mat' * dz
 end
