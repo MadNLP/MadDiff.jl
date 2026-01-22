@@ -204,7 +204,7 @@ _factorization_ok(ls::MadNLP.LapackCPUSolver) = ls.info[] == 0
 _factorization_ok(ls::MadNLP.MumpsSolver) = !ls.is_singular
 _factorization_ok(::Any) = true
 
-function _has_custom_config(config::MadDiffConfig)
+function _has_custom_config(config)
     return !isnothing(config.kkt_system) ||
         !isnothing(config.kkt_options) ||
         !isnothing(config.linear_solver) ||
