@@ -33,25 +33,25 @@ const CUDA_FUNCTIONAL = CUDA.functional()
         Δp = [1.0]  # parameter perturbation direction
         fwd = MadDiff.forward_differentiate!(sens; dlcon_dp=dlcon_dp * Δp)
 
-        seed_x = [1.0]  # gradient of loss w.r.t. x*
+        dL_dx = [1.0]  # gradient of loss w.r.t. x*
         vjp = MadDiff.make_param_pullback(dlcon_dp=dlcon_dp)
         sens_rev = MadDiff.MadDiffSolver(solver; param_pullback=vjp, n_p=1)
-        rev = MadDiff.reverse_differentiate!(sens_rev; seed_x)
+        rev = MadDiff.reverse_differentiate!(sens_rev; dL_dx)
 
-        @test dot(seed_x, fwd.dx) ≈ dot(rev.grad_p, Δp)
+        @test dot(dL_dx, fwd.dx) ≈ dot(rev.grad_p, Δp)
 
         sens2 = MadDiff.MadDiffSolver(solver; config=MadDiffConfig(kkt_system=MadNLP.SparseUnreducedKKTSystem, regularization=:inertia, reuse_kkt=false))
         dlcon_dp2 = [2.0;;]  # ∂lcon/∂p (n_con × n_p matrix)
         Δp2 = [1.0]  # parameter perturbation direction
         fwd2 = MadDiff.forward_differentiate!(sens; dlcon_dp=dlcon_dp2 * Δp2)
 
-        seed_x2 = [1.0]  # gradient of loss w.r.t. x*
+        dL_dx2 = [1.0]  # gradient of loss w.r.t. x*
         vjp2 = MadDiff.make_param_pullback(dlcon_dp=dlcon_dp2)
         sens_rev2 = MadDiff.MadDiffSolver(solver; param_pullback=vjp2, n_p=1)
-        rev2 = MadDiff.reverse_differentiate!(sens_rev2; seed_x=seed_x2)
+        rev2 = MadDiff.reverse_differentiate!(sens_rev2; dL_dx=dL_dx2)
 
-        @test dot(seed_x2, fwd2.dx) ≈ dot(rev2.grad_p, Δp2)
-        @test dot(seed_x, fwd.dx) ≈ dot(seed_x2, fwd2.dx)
+        @test dot(dL_dx2, fwd2.dx) ≈ dot(rev2.grad_p, Δp2)
+        @test dot(dL_dx, fwd.dx) ≈ dot(dL_dx2, fwd2.dx)
     end
 
     @testset "DiffOpt API" begin

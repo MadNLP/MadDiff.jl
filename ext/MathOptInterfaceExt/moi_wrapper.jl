@@ -150,7 +150,7 @@ end
 
 _get_y_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.y_cache, n)
 _get_dλ_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dλ_cache, n)
-_get_seed_x!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_x, n)
-_get_seed_λ!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_λ, n)
-_get_seed_zl!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_zl, n)
-_get_seed_zu!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.seed_zu, n)
+_get_dL_dx!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dx, n)
+_get_dL_dλ!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dλ, n)
+_get_dL_dzl!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzl, n)
+_get_dL_dzu!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzu, n)

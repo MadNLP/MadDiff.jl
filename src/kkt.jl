@@ -1,18 +1,3 @@
-# TODO: ask madnlp/madnlpgpu for this
-_factorization_ok(ls::MadNLP.LDLSolver) = MadNLP.LDLFactorizations.factorized(ls.inner)
-_factorization_ok(ls::MadNLP.CHOLMODSolver) = MadNLP.issuccess(ls.inner)
-_factorization_ok(ls::MadNLP.UmfpackSolver) = MadNLP.UMFPACK.issuccess(ls.inner)
-_factorization_ok(ls::MadNLP.LapackCPUSolver) = ls.info[] == 0
-_factorization_ok(ls::MadNLP.MumpsSolver) = !ls.is_singular
-_factorization_ok(::Any) = true
-
-function _has_custom_config(config::MadDiffConfig)
-    return !isnothing(config.kkt_system) ||
-        !isnothing(config.kkt_options) ||
-        !isnothing(config.linear_solver) ||
-        !isnothing(config.linear_solver_options)
-end
-
 function _prepare_sensitivity_kkt(solver, config::MadDiffConfig)
     if !config.reuse_kkt && isnothing(config.kkt_system)
         error("reuse_kkt=false requires kkt_system to be set.")
@@ -100,7 +85,6 @@ function _refactorize_kkt_for_sensitivity!(
     return nothing
 end
 
-_get_wrapper_type(x) = Base.typename(typeof(x)).wrapper
 function _build_kkt_for_sensitivity(
         solver::MadNLP.AbstractMadNLPSolver;
         kkt_system = nothing,

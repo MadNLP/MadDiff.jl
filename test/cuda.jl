@@ -63,9 +63,9 @@ else
 
             sens = MadDiff.MadDiffSolver(solver)
 
-            seed_x = CuArray([1.0, 1.0])
+            dL_dx = CuArray([1.0, 1.0])
 
-            result = MadDiff.reverse_differentiate!(sens; seed_x)
+            result = MadDiff.reverse_differentiate!(sens; dL_dx)
 
             # Verify results are CuArrays
             @test result.dx isa CuArray
@@ -96,8 +96,8 @@ else
             fwd = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
             dx_dp = Vector(fwd.dx)
 
-            seed_x = CuArray([1.0, 1.0])
-            rev = MadDiff.reverse_differentiate!(sens; seed_x)
+            dL_dx = CuArray([1.0, 1.0])
+            rev = MadDiff.reverse_differentiate!(sens; dL_dx)
 
             dloss_dp_fwd = dot([1.0, 1.0], dx_dp)
 

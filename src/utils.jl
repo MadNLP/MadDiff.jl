@@ -1,3 +1,18 @@
+const SUCCESSFUL_STATUSES = (MadNLP.SOLVE_SUCCEEDED, MadNLP.SOLVED_TO_ACCEPTABLE_LEVEL)
+function assert_solved_and_feasible(solver::MadNLP.AbstractMadNLPSolver)
+    solver.status ∉ SUCCESSFUL_STATUSES &&
+        error("Solver did not converge successfully: $(solver.status)")
+    return nothing
+end
+
+struct SensitivityDims{VI, VB}
+    n_x::Int
+    n_con::Int
+    n_p::Int
+    fixed_idx::VI
+    is_eq::VB
+end
+
 struct SharedCache{VT, VK, PV}
     rhs::VK
     dzl_kkt::VT
@@ -30,6 +45,62 @@ function _get_shared_cache!(sens)
     return sens.shared_cache
 end
 
+function _create_primal_buffer(::Type{VT}, cb::MadNLP.AbstractCallback) where VT
+    MadNLP.PrimalVector(VT, cb.nvar, length(cb.ind_ineq), cb.ind_lb, cb.ind_ub)
+end
+
+struct ForwardCache{VT}
+    d2L_dxdp::VT
+    dg_dp::VT
+    dlcon_dp::VT
+    ducon_dp::VT
+end
+
+function _get_forward_cache!(sens)
+    if isnothing(sens.forward_cache)
+        dims = sens.dims
+        x_array = MadNLP.full(sens.solver.x)
+        T = eltype(x_array)
+        sens.forward_cache = ForwardCache(
+            _zeros_like(x_array, T, dims.n_x),
+            _zeros_like(x_array, T, dims.n_con),
+            _zeros_like(x_array, T, dims.n_con),
+            _zeros_like(x_array, T, dims.n_con),
+        )
+    end
+    return sens.forward_cache
+end
+
+struct ReverseCache{VT}
+    dL_dx::VT
+    dL_dλ::VT
+    dL_dzl::VT
+    dL_dzu::VT
+    eq_scale::VT
+    grad_p::VT
+    dλ_scaled::VT
+end
+
+function _get_reverse_cache!(sens)
+    if isnothing(sens.reverse_cache)
+        cb = sens.solver.cb
+        dims = sens.dims
+        x_array = MadNLP.full(sens.solver.x)
+        T = eltype(x_array)
+
+        sens.reverse_cache = ReverseCache(
+            _zeros_like(x_array, T, cb.nvar),
+            _zeros_like(x_array, T, dims.n_con),
+            _zeros_like(x_array, T, length(cb.ind_lb)),
+            _zeros_like(x_array, T, length(cb.ind_ub)),
+            ifelse.(dims.is_eq, T(1 // 2), one(T)),
+            _zeros_like(x_array, T, dims.n_p),
+            _zeros_like(x_array, T, dims.n_con),
+        )
+    end
+    return sens.reverse_cache
+end
+
 function _pack_primal!(out, v, cb::MadNLP.AbstractCallback)
     copyto!(out, v)
     return out
@@ -44,12 +115,7 @@ function _pack_slack!(out, v, cb)
     return out
 end
 
-_kkt_to_full_idx(cb::MadNLP.AbstractCallback, kkt_idx) = kkt_idx
-_kkt_to_full_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, kkt_idx) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = cb.fixed_handler.free[kkt_idx]
-
 _zeros_like(x_array, ::Type{T}, n::Int) where {T} = fill!(similar(x_array, T, n), zero(T))
-
-_falses_like(x_array, n::Int) = fill!(similar(x_array, Bool, n), false)
 
 _to_bool_array(x_array, v::BitVector) = convert(Vector{Bool}, v)
 _to_bool_array(x_array, v) = v
@@ -61,55 +127,53 @@ function _get_fixed_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, ref_array) wh
     copyto!(result, fixed)
     return result
 end
+
 function _unpack_primal!(v_full, cb::MadNLP.AbstractCallback, v_kkt)
     v_full .= v_kkt
+    return nothing
 end
 function _unpack_primal!(v_full, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, v_kkt) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter}
     fill!(v_full, zero(eltype(v_full)))
     v_full[cb.fixed_handler.free] .= v_kkt
+    return nothing
 end
 
 function _unpack_z!(z_full, cb, z_kkt, pv::MadNLP.PrimalVector, pv_values)
     fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
     pv_values .= z_kkt
     MadNLP.unpack_z!(z_full, cb, MadNLP.variable(pv))
-end
-
-function _scatter_to_primal_vector!(pv::MadNLP.PrimalVector, v_full, cb)
-    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
-    _pack_primal!(MadNLP.variable(pv), v_full, cb)
-end
-
-_pack_seed_x!(cache, ::Nothing, cb) = nothing
-_pack_seed_x!(cache, seed_x, cb) = _pack_primal!(cache, seed_x, cb)
-
-_pack_seed_λ!(cache, ::Nothing, cb) = nothing
-function _pack_seed_λ!(cache, seed_λ, cb)
-    MadNLP.unpack_y!(cache, cb, seed_λ)
-    return cache
-end
-
-_pack_seed_z!(cache, ::Nothing, cb, pv::MadNLP.PrimalVector, pv_values) = fill!(cache, zero(eltype(cache)))
-function _pack_seed_z!(cache, seed_z, cb, pv::MadNLP.PrimalVector, pv_values)
-    _scatter_to_primal_vector!(pv, seed_z, cb)
-    cache .= pv_values ./ cb.obj_scale[]
     return nothing
 end
 
-function _create_primal_buffer(::Type{VT}, cb::MadNLP.AbstractCallback) where VT
-    MadNLP.PrimalVector(VT, cb.nvar, length(cb.ind_ineq), cb.ind_lb, cb.ind_ub)
+_pack_dL_dx!(cache, ::Nothing, cb) = nothing
+_pack_dL_dx!(cache, dL_dx, cb) = _pack_primal!(cache, dL_dx, cb)
+
+_pack_dL_dλ!(cache, ::Nothing, cb) = nothing
+function _pack_dL_dλ!(cache, dL_dλ, cb)
+    MadNLP.unpack_y!(cache, cb, dL_dλ)
+    return cache
+end
+
+_pack_dL_dz!(cache, ::Nothing, cb, pv::MadNLP.PrimalVector, pv_values) = fill!(cache, zero(eltype(cache)))
+function _pack_dL_dz!(cache, dL_dz, cb, pv::MadNLP.PrimalVector, pv_values)
+    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
+    _pack_primal!(MadNLP.variable(pv), dL_dz, cb)
+    cache .= pv_values ./ cb.obj_scale[]
+    return nothing
 end
 
 _pullback_add!(out, ::Nothing, v) = nothing
 function _pullback_add!(out, M, v)
     @lencheck size(M, 1) v
     out .+= M' * v
+    return nothing
 end
 
 _pullback_sub!(out, ::Nothing, v) = nothing
 function _pullback_sub!(out, M, v)
     @lencheck size(M, 1) v
     out .-= M' * v
+    return nothing
 end
 
 _copy_and_scale_lag!(out, ::Nothing, cb, cache) = nothing
@@ -126,34 +190,25 @@ function _copy_and_scale_con!(dest, src, cb)
     return dest
 end
 
-_get_bound_scale(kkt::MadNLP.AbstractReducedKKTSystem) = (kkt.l_lower, kkt.u_lower)
-_get_bound_scale(kkt::MadNLP.AbstractCondensedKKTSystem) = (kkt.l_lower, kkt.u_lower)
-_get_bound_scale(::MadNLP.SparseUnreducedKKTSystem) = (nothing, nothing)
-
-function _build_bound_pert!(pv::MadNLP.PrimalVector, dvar_dp, dcon_dp, cb)
-    T = eltype(MadNLP.full(pv))
-    fill!(MadNLP.full(pv), zero(T))
-    _set_variable_pert!(pv, dvar_dp, cb)
-    _set_slack_pert!(pv, dcon_dp, cb)
-    return pv
-end
-
 _set_variable_pert!(pv, ::Nothing, cb) = nothing
 _set_variable_pert!(pv, dvar_dp, cb) = _pack_primal!(MadNLP.variable(pv), dvar_dp, cb)
 
 _set_slack_pert!(pv, ::Nothing, cb) = nothing
 _set_slack_pert!(pv, dcon_dp, cb) = _pack_slack!(MadNLP.slack(pv), dcon_dp, cb)
 
-function _set_fixed_sensitivity!(dx, dl_dp, du_dp, dims)
-    isempty(dims.fixed_idx) && return nothing
-    _unpack_fixed!(dx, dl_dp, du_dp, dims)
-    return nothing
+# TODO: ask madnlp/madnlpgpu for this
+_factorization_ok(ls::MadNLP.LDLSolver) = MadNLP.LDLFactorizations.factorized(ls.inner)
+_factorization_ok(ls::MadNLP.CHOLMODSolver) = MadNLP.issuccess(ls.inner)
+_factorization_ok(ls::MadNLP.UmfpackSolver) = MadNLP.UMFPACK.issuccess(ls.inner)
+_factorization_ok(ls::MadNLP.LapackCPUSolver) = ls.info[] == 0
+_factorization_ok(ls::MadNLP.MumpsSolver) = !ls.is_singular
+_factorization_ok(::Any) = true
+
+function _has_custom_config(config::MadDiffConfig)
+    return !isnothing(config.kkt_system) ||
+        !isnothing(config.kkt_options) ||
+        !isnothing(config.linear_solver) ||
+        !isnothing(config.linear_solver_options)
 end
 
-_unpack_fixed!(dx, ::Nothing, ::Nothing, dims) = nothing
-_unpack_fixed!(dx, dl_dp, ::Nothing, dims) = (dx[dims.fixed_idx] .= dl_dp[dims.fixed_idx];)
-_unpack_fixed!(dx, ::Nothing, du_dp, dims) = (dx[dims.fixed_idx] .= du_dp[dims.fixed_idx];)
-function _unpack_fixed!(dx, dl_dp, du_dp, dims)
-    dx[dims.fixed_idx] .= (dl_dp[dims.fixed_idx] .+ du_dp[dims.fixed_idx]) ./ 2
-    return nothing
-end
+_get_wrapper_type(x) = Base.typename(typeof(x)).wrapper

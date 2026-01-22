@@ -31,10 +31,10 @@ ReverseModeData{T}() where {T} = ReverseModeData{T}(
 mutable struct WorkBuffers{T}
     y_cache::Vector{T}
     dλ_cache::Vector{T}
-    seed_x::Vector{T}
-    seed_λ::Vector{T}
-    seed_zl::Vector{T}
-    seed_zu::Vector{T}
+    dL_dx::Vector{T}
+    dL_dλ::Vector{T}
+    dL_dzl::Vector{T}
+    dL_dzu::Vector{T}
 end
 WorkBuffers{T}() where {T} = WorkBuffers{T}(
     Vector{T}(undef, 0),
