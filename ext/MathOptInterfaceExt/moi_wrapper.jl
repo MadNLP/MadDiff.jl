@@ -78,8 +78,6 @@ end
 function MOI.empty!(m::Optimizer)
     MOI.empty!(m.inner)
     empty!(m.param_ci_to_vi)
-    empty!(m.vi_to_lb_idx)
-    empty!(m.vi_to_ub_idx)
     empty!(m.forward.param_perturbations)
     empty!(m.reverse.primal_seeds)
     empty!(m.reverse.dual_seeds)
@@ -133,37 +131,8 @@ function _get_sensitivity_solver!(model::Optimizer)
             param_pullback = _make_param_pullback_closure(model, ctx),
             n_p = ctx.n_p,
         )
-        dims = model.sensitivity_solver.dims
-        model.idx_lb_cpu = dims.idx_lb isa Vector ? dims.idx_lb : Array(dims.idx_lb)
-        model.idx_ub_cpu = dims.idx_ub isa Vector ? dims.idx_ub : Array(dims.idx_ub)
-        _populate_bound_idx_mappings!(model)
     end
     return model.sensitivity_solver
-end
-
-_kkt_to_moi_idx(cb::MadNLP.AbstractCallback, kkt_idx) = kkt_idx
-_kkt_to_moi_idx(cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, kkt_idx) where {T,VT,VI,NLP,FH<:MadNLP.MakeParameter} = cb.fixed_handler.free[kkt_idx]
-
-function _populate_bound_idx_mappings!(model::Optimizer)
-    sens = model.sensitivity_solver
-    ctx = _get_sensitivity_context!(model)
-    cb = sens.solver.cb
-    empty!(model.vi_to_lb_idx)
-    empty!(model.vi_to_ub_idx)
-    dims = sens.dims
-    for (i, kkt_idx) in enumerate(model.idx_lb_cpu)
-        kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
-        moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
-        vi = ctx.primal_vars[moi_idx]
-        model.vi_to_lb_idx[vi] = i
-    end
-    for (i, kkt_idx) in enumerate(model.idx_ub_cpu)
-        kkt_idx > dims.n_x_kkt && continue  # skip slack bounds
-        moi_idx = _kkt_to_moi_idx(cb, kkt_idx)
-        vi = ctx.primal_vars[moi_idx]
-        model.vi_to_ub_idx[vi] = i
-    end
-    return
 end
 
 function _get_sensitivity_context!(model::Optimizer{OT, T}) where {OT, T}

@@ -127,12 +127,11 @@ function _build_kkt_for_sensitivity(
     return kkt_new
 end
 
-function _extract_sensitivities!(dλ, dzl, dzu, x, solver)
+function _extract_sensitivities!(dx_kkt, dλ, dzl, dzu, x, solver)
     n_x = solver.cb.nvar
-
+    dx_kkt .= @view MadNLP.primal(x)[1:n_x]
     dλ .= MadNLP.dual(x)
     dzl .= MadNLP.dual_lb(x)
     dzu .= MadNLP.dual_ub(x)
-
-    return MadNLP.primal(x)[1:n_x]
+    return nothing
 end

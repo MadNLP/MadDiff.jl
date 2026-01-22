@@ -21,8 +21,8 @@ function ForwardResult(sens::MadDiffSolver)
     return ForwardResult(
         _zeros_like(x_array, T, dims.n_x),
         _zeros_like(x_array, T, dims.n_con),
-        _zeros_like(x_array, T, dims.n_lb),
-        _zeros_like(x_array, T, dims.n_ub),
+        _zeros_like(x_array, T, dims.n_x),
+        _zeros_like(x_array, T, dims.n_x),
     )
 end
 
@@ -79,22 +79,21 @@ function forward_differentiate!(
     dg_dp_scaled = _copy_and_scale_dg_dp(dg_dp, cb, cache)
     dlcon_dp_scaled = _copy_and_scale_dlcon_dp(dlcon_dp, cb, cache)
     ducon_dp_scaled = _copy_and_scale_ducon_dp(ducon_dp, cb, cache)
-    dl_dp_kkt = _extract_var_bound_dp(dl_dp, dims, Val(:lower))
-    du_dp_kkt = _extract_var_bound_dp(du_dp, dims, Val(:upper))
+    dl_dp_kkt = _extract_dl_dp!(cache, dl_dp, cb)
+    du_dp_kkt = _extract_du_dp!(cache, du_dp, cb)
 
     sol = _solve_jvp!(sens.kkt, cache.work, d2L_dxdp_kkt, dg_dp_scaled, dl_dp_kkt, du_dp_kkt, dlcon_dp_scaled, ducon_dp_scaled, dims)
 
-    dx_kkt = _extract_sensitivities!(cache.dλ, cache.dzl, cache.dzu, sol, sens.solver)
+    _extract_sensitivities!(cache.dx_kkt, cache.dλ, cache.dzl_kkt, cache.dzu_kkt, sol, sens.solver)
 
-    _unpack_primal!(cache.dx_full, cb, dx_kkt)
+    _unpack_primal!(cache.dx_full, cb, cache.dx_kkt)
     _set_fixed_sensitivity!(cache.dx_full, dl_dp, du_dp, dims)
     MadNLP.unpack_y!(cache.dλ, cb, cache.dλ)
 
     copyto!(result.dx, cache.dx_full)
     copyto!(result.dλ, cache.dλ)
-    obj_scale_inv = inv(cb.obj_scale[])
-    result.dzl .= cache.dzl .* obj_scale_inv
-    result.dzu .= cache.dzu .* obj_scale_inv
+    _unpack_zl!(result.dzl, cb, cache.dzl_kkt, cache.primal_buffer)
+    _unpack_zu!(result.dzu, cb, cache.dzu_kkt, cache.primal_buffer)
 
     return result
 end
@@ -159,16 +158,20 @@ function forward_differentiate!(solver::MadNLP.AbstractMadNLPSolver;
     return forward_differentiate!(sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
 end
 
-struct ForwardCache{VT, VK}
+struct ForwardCache{VT, VK, PV}
     work::VK
-    dzl::VT
-    dzu::VT
+    dzl_kkt::VT
+    dzu_kkt::VT
     dλ::VT
     dx_full::VT
+    primal_buffer::PV
     d2L_dxdp_cache::VT
     dg_dp_cache::VT
     dlcon_dp_cache::VT
     ducon_dp_cache::VT
+    dl_dp_kkt::VT
+    du_dp_kkt::VT
+    dx_kkt::VT
 end
 
 function _get_forward_cache!(sens::MadDiffSolver)
@@ -176,16 +179,21 @@ function _get_forward_cache!(sens::MadDiffSolver)
         dims = sens.dims
         x_array = MadNLP.full(sens.solver.x)
         T = eltype(x_array)
+        VT = typeof(x_array)
         sens.forward_cache = ForwardCache(
             MadNLP.UnreducedKKTVector(sens.kkt),
             _zeros_like(x_array, T, dims.n_lb),
             _zeros_like(x_array, T, dims.n_ub),
             _zeros_like(x_array, T, dims.n_con),
             _zeros_like(x_array, T, dims.n_x),
+            MadNLP.PrimalVector(VT, dims.n_x_kkt, dims.n_slack, dims.idx_lb, dims.idx_ub),
             _zeros_like(x_array, T, dims.n_x),
             _zeros_like(x_array, T, dims.n_con),
             _zeros_like(x_array, T, dims.n_con),
             _zeros_like(x_array, T, dims.n_con),
+            _zeros_like(x_array, T, dims.n_lb),
+            _zeros_like(x_array, T, dims.n_ub),
+            _zeros_like(x_array, T, dims.n_x_kkt),
         )
     end
     return sens.forward_cache
@@ -240,10 +248,10 @@ function _jvp_pre!(kkt, w, d2L_dxdp_vec, dg_dp_vec, dl_dp, du_dp, dlcon_dp, duco
     _jvp_set_dual_rhs!(MadNLP.dual(w), dlcon_dp, ducon_dp, dims.is_eq)
 
     l_scale, u_scale = _get_bound_scale(kkt)
-    _jvp_set_dual_bound_var!(MadNLP.dual_lb(w), l_scale, dl_dp, Val(:lower))
-    _jvp_set_dual_bound_var!(MadNLP.dual_ub(w), u_scale, du_dp, Val(:upper))
-    _jvp_set_dual_bound_con!(MadNLP.dual_lb(w), l_scale, dlcon_dp, dims.slack_lb_pos, dims.slack_lb_con, Val(:lower))
-    _jvp_set_dual_bound_con!(MadNLP.dual_ub(w), u_scale, ducon_dp, dims.slack_ub_pos, dims.slack_ub_con, Val(:upper))
+    _jvp_set_dual_bound_var_lower!(MadNLP.dual_lb(w), l_scale, dl_dp)
+    _jvp_set_dual_bound_var_upper!(MadNLP.dual_ub(w), u_scale, du_dp)
+    _jvp_set_dual_bound_con_lower!(MadNLP.dual_lb(w), l_scale, dlcon_dp, dims.slack_lb_pos, dims.slack_lb_con)
+    _jvp_set_dual_bound_con_upper!(MadNLP.dual_ub(w), u_scale, ducon_dp, dims.slack_ub_pos, dims.slack_ub_con)
 
     return w
 end
@@ -270,52 +278,50 @@ function _jvp_set_dual_rhs!(dual, dlcon_dp, ducon_dp, is_eq)
     dual .+= is_eq .* (dlcon_dp .+ ducon_dp) ./ 2
 end
 
-_jvp_set_dual_bound_var!(dual, scale, ::Nothing, ::Val{:lower}) = nothing
-_jvp_set_dual_bound_var!(dual, scale, ::Nothing, ::Val{:upper}) = nothing
-_jvp_set_dual_bound_var!(dual, ::Nothing, dp, ::Val{:lower}) = (dual .= dp)
-_jvp_set_dual_bound_var!(dual, ::Nothing, dp, ::Val{:upper}) = (dual .= .-dp)
-_jvp_set_dual_bound_var!(dual, scale, dp, ::Val{:lower}) = (dual .= scale .* dp)
-_jvp_set_dual_bound_var!(dual, scale, dp, ::Val{:upper}) = (dual .= .-scale .* dp)
+_jvp_set_dual_bound_var_lower!(dual, scale, ::Nothing) = nothing
+_jvp_set_dual_bound_var_upper!(dual, scale, ::Nothing) = nothing
+_jvp_set_dual_bound_var_lower!(dual, ::Nothing, dp) = (dual .= dp)
+_jvp_set_dual_bound_var_upper!(dual, ::Nothing, dp) = (dual .= .-dp)
+_jvp_set_dual_bound_var_lower!(dual, scale, dp) = (dual .= scale .* dp)
+_jvp_set_dual_bound_var_upper!(dual, scale, dp) = (dual .= .-scale .* dp)
 
-_jvp_set_dual_bound_con!(dual, scale, ::Nothing, pos, con, ::Val{:lower}) = nothing
-_jvp_set_dual_bound_con!(dual, scale, ::Nothing, pos, con, ::Val{:upper}) = nothing
-function _jvp_set_dual_bound_con!(dual, ::Nothing, dcon_dp, pos, con, ::Val{:lower})
+_jvp_set_dual_bound_con_lower!(dual, scale, ::Nothing, pos, con) = nothing
+_jvp_set_dual_bound_con_upper!(dual, scale, ::Nothing, pos, con) = nothing
+function _jvp_set_dual_bound_con_lower!(dual, ::Nothing, dcon_dp, pos, con)
     @views dual[pos] .+= dcon_dp[con]
     return nothing
 end
-function _jvp_set_dual_bound_con!(dual, ::Nothing, dcon_dp, pos, con, ::Val{:upper})
+function _jvp_set_dual_bound_con_upper!(dual, ::Nothing, dcon_dp, pos, con)
     @views dual[pos] .-= dcon_dp[con]
     return nothing
 end
-function _jvp_set_dual_bound_con!(dual, scale, dcon_dp, pos, con, ::Val{:lower})
+function _jvp_set_dual_bound_con_lower!(dual, scale, dcon_dp, pos, con)
     @views dual[pos] .+= scale[pos] .* dcon_dp[con]
     return nothing
 end
-function _jvp_set_dual_bound_con!(dual, scale, dcon_dp, pos, con, ::Val{:upper})
+function _jvp_set_dual_bound_con_upper!(dual, scale, dcon_dp, pos, con)
     @views dual[pos] .-= scale[pos] .* dcon_dp[con]
     return nothing
 end
 
 # disambiguation
 _jvp_set_dual_rhs!(dual, ::Nothing, ::Nothing, is_eq) = nothing
-_jvp_set_dual_bound_var!(dual, ::Nothing, ::Nothing, ::Val{:lower}) = nothing
-_jvp_set_dual_bound_var!(dual, ::Nothing, ::Nothing, ::Val{:upper}) = nothing
-_jvp_set_dual_bound_con!(dual, ::Nothing, ::Nothing, pos, con, ::Val{:lower}) = nothing
-_jvp_set_dual_bound_con!(dual, ::Nothing, ::Nothing, pos, con, ::Val{:upper}) = nothing
+_jvp_set_dual_bound_var_lower!(dual, ::Nothing, ::Nothing) = nothing
+_jvp_set_dual_bound_var_upper!(dual, ::Nothing, ::Nothing) = nothing
+_jvp_set_dual_bound_con_lower!(dual, ::Nothing, ::Nothing, pos, con) = nothing
+_jvp_set_dual_bound_con_upper!(dual, ::Nothing, ::Nothing, pos, con) = nothing
 
-_extract_var_bound_dp(::Nothing, dims, ::Val{:lower}) = nothing
-_extract_var_bound_dp(::Nothing, dims, ::Val{:upper}) = nothing
-function _extract_var_bound_dp(dp_full, dims, ::Val{:lower})
-    T = eltype(dp_full)
-    dp_kkt = zeros(T, dims.n_lb)
-    dp_kkt[dims.var_lb_pos] .= dp_full[dims.var_idx_lb]
-    return dp_kkt
+_extract_dl_dp!(cache, ::Nothing, cb) = nothing
+_extract_du_dp!(cache, ::Nothing, cb) = nothing
+function _extract_dl_dp!(cache, dp_full, cb)
+    _scatter_to_primal_vector!(cache.primal_buffer, dp_full, cb)
+    cache.dl_dp_kkt .= cache.primal_buffer.values_lr
+    return cache.dl_dp_kkt
 end
-function _extract_var_bound_dp(dp_full, dims, ::Val{:upper})
-    T = eltype(dp_full)
-    dp_kkt = zeros(T, dims.n_ub)
-    dp_kkt[dims.var_ub_pos] .= dp_full[dims.var_idx_ub]
-    return dp_kkt
+function _extract_du_dp!(cache, dp_full, cb)
+    _scatter_to_primal_vector!(cache.primal_buffer, dp_full, cb)
+    cache.du_dp_kkt .= cache.primal_buffer.values_ur
+    return cache.du_dp_kkt
 end
 
 function _set_fixed_sensitivity!(dx, dl_dp, du_dp, dims)

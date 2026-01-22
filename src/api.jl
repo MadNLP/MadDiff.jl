@@ -22,6 +22,22 @@ function _unpack_primal!(v_full, cb::MadNLP.SparseCallback{T,VT,VI,NLP,FH}, v_kk
     v_full[cb.fixed_handler.free] .= v_kkt
 end
 
+function _unpack_zl!(z_full, cb, z_kkt, pv::MadNLP.PrimalVector)
+    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
+    pv.values_lr .= z_kkt
+    MadNLP.unpack_z!(z_full, cb, MadNLP.variable(pv))
+end
+function _unpack_zu!(z_full, cb, z_kkt, pv::MadNLP.PrimalVector)
+    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
+    pv.values_ur .= z_kkt
+    MadNLP.unpack_z!(z_full, cb, MadNLP.variable(pv))
+end
+
+function _scatter_to_primal_vector!(pv::MadNLP.PrimalVector, v_full, cb)
+    fill!(MadNLP.full(pv), zero(eltype(MadNLP.full(pv))))
+    MadNLP.variable(pv) .= _pack_primal(v_full, cb)
+end
+
 """
     MadDiffConfig(; kwargs...)
 
@@ -55,15 +71,12 @@ struct SensitivityDims{VI, VB}
     n_x::Int
     n_con::Int
     n_x_kkt::Int
+    n_slack::Int
     n_lb::Int
     n_ub::Int
     n_p::Int
     idx_lb::VI
     idx_ub::VI
-    var_idx_lb::VI
-    var_idx_ub::VI
-    var_lb_pos::VI
-    var_ub_pos::VI
     fixed_idx::VI
     is_eq::VB
     slack_lb_pos::VI
@@ -133,14 +146,11 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     n_x = NLPModels.get_nvar(solver.nlp)
     n_con = NLPModels.get_ncon(solver.nlp)
     n_x_kkt = solver.cb.nvar
+    n_slack = length(solver.cb.ind_ineq)
     idx_lb = solver.cb.ind_lb
     idx_ub = solver.cb.ind_ub
     n_lb = length(idx_lb)
     n_ub = length(idx_ub)
-    var_idx_lb_kkt = idx_lb[idx_lb .<= n_x_kkt]
-    var_idx_ub_kkt = idx_ub[idx_ub .<= n_x_kkt]
-    var_idx_lb = _kkt_to_full_idx(solver.cb, var_idx_lb_kkt)
-    var_idx_ub = _kkt_to_full_idx(solver.cb, var_idx_ub_kkt)
 
     lcon = NLPModels.get_lcon(solver.nlp)
     ucon = NLPModels.get_ucon(solver.nlp)
@@ -154,12 +164,9 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     slack_lb_con = idx_lb[slack_lb_pos] .- n_x_kkt
     slack_ub_con = idx_ub[slack_ub_pos] .- n_x_kkt
 
-    var_lb_pos = findall(.!slack_in_lb)
-    var_ub_pos = findall(.!slack_in_ub)
     fixed_idx = _get_fixed_idx(solver.cb, idx_lb)
 
-    dims = SensitivityDims(n_x, n_con, n_x_kkt, n_lb, n_ub, n_p, idx_lb, idx_ub, var_idx_lb, var_idx_ub,
-                       var_lb_pos, var_ub_pos, fixed_idx,
+    dims = SensitivityDims(n_x, n_con, n_x_kkt, n_slack, n_lb, n_ub, n_p, idx_lb, idx_ub, fixed_idx,
                        is_eq, slack_lb_pos, slack_lb_con, slack_ub_pos, slack_ub_con)
     kkt = _prepare_sensitivity_kkt(solver, config)
 
@@ -170,8 +177,9 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     VB = typeof(is_eq)
     VT = typeof(x_array)
     VK = MadNLP.UnreducedKKTVector{T,VT,VI}
-    FC = ForwardCache{VT, VK}
-    RC = ReverseCache{VT, VK, VB}
+    PV = MadNLP.PrimalVector{T,VT,VI}
+    FC = ForwardCache{VT, VK, PV}
+    RC = ReverseCache{VT, VK, PV}
     F = typeof(param_pullback)
     return MadDiffSolver{KKT, Solver, VI, VB, FC, RC, F}(
         solver, config, kkt, dims,
@@ -247,18 +255,17 @@ function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing
         dλ_scaled .= dλ .* sens.reverse_cache.eq_scale
         _pullback_add!(out, dlcon_dp, dλ_scaled)
         _pullback_add!(out, ducon_dp, dλ_scaled)
-        dims = sens.dims
-        _pullback_bound!(out, dl_dp, dzl, dims.var_idx_lb, dims.var_lb_pos, Val(:lower))
-        _pullback_bound!(out, du_dp, dzu, dims.var_idx_ub, dims.var_ub_pos, Val(:upper))
+        _pullback_bound_lower!(out, dl_dp, dzl)
+        _pullback_bound_upper!(out, du_dp, dzu)
         return out
     end
 end
 
-_pullback_bound!(out, ::Nothing, dz, var_idx, var_pos, ::Val{:lower}) = nothing
-_pullback_bound!(out, ::Nothing, dz, var_idx, var_pos, ::Val{:upper}) = nothing
-function _pullback_bound!(out, dp_mat, dz, var_idx, var_pos, ::Val{:lower})
-    @views out .-= dp_mat[var_idx, :]' * dz[var_pos]
+_pullback_bound_lower!(out, ::Nothing, dz) = nothing
+_pullback_bound_upper!(out, ::Nothing, dz) = nothing
+function _pullback_bound_lower!(out, dp_mat, dz)
+    out .-= dp_mat' * dz
 end
-function _pullback_bound!(out, dp_mat, dz, var_idx, var_pos, ::Val{:upper})
-    @views out .+= dp_mat[var_idx, :]' * dz[var_pos]
+function _pullback_bound_upper!(out, dp_mat, dz)
+    out .+= dp_mat' * dz
 end

@@ -110,43 +110,27 @@ end
 
 function _store_bound_dual_sensitivities!(model, sens, result, ctx)
     dsens = model.forward.dual_sensitivities
-    vi_to_lb_idx = model.vi_to_lb_idx
-    vi_to_ub_idx = model.vi_to_ub_idx
 
     dzl = result.dzl isa Vector ? result.dzl : Array(result.dzl)
     dzu = result.dzu isa Vector ? result.dzu : Array(result.dzu)
 
     for (vi, ci) in ctx.vi_to_lb_ci
-        i = get(vi_to_lb_idx, vi, 0)
-        !iszero(i) && (dsens[ci] = dzl[i])
+        idx = ctx.primal_idx[vi]
+        dsens[ci] = dzl[idx]
     end
     for (vi, ci) in ctx.vi_to_ub_ci
-        i = get(vi_to_ub_idx, vi, 0)
-        !iszero(i) && (dsens[ci] = -dzu[i])
+        idx = ctx.primal_idx[vi]
+        dsens[ci] = -dzu[idx]
     end
 
     for (vi, ci) in ctx.vi_to_interval_ci
-        dzl_idx = get(vi_to_lb_idx, vi, 0)
-        dzu_idx = get(vi_to_ub_idx, vi, 0)
-        if !iszero(dzl_idx) && !iszero(dzu_idx)
-            dsens[ci] = dzl[dzl_idx] - dzu[dzu_idx]
-        elseif !iszero(dzl_idx)
-            dsens[ci] = dzl[dzl_idx]
-        elseif !iszero(dzu_idx)
-            dsens[ci] = -dzu[dzu_idx]
-        end
+        idx = ctx.primal_idx[vi]
+        dsens[ci] = dzl[idx] - dzu[idx]
     end
 
     for (vi, ci) in ctx.vi_to_eq_ci
-        dzl_idx = get(vi_to_lb_idx, vi, 0)
-        dzu_idx = get(vi_to_ub_idx, vi, 0)
-        if !iszero(dzl_idx) && !iszero(dzu_idx)
-            dsens[ci] = dzl[dzl_idx] - dzu[dzu_idx]
-        elseif !iszero(dzl_idx)
-            dsens[ci] = dzl[dzl_idx]
-        elseif !iszero(dzu_idx)
-            dsens[ci] = -dzu[dzu_idx]
-        end
+        idx = ctx.primal_idx[vi]
+        dsens[ci] = dzl[idx] - dzu[idx]
     end
 
     return

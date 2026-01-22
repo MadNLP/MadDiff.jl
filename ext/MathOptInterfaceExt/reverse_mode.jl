@@ -24,43 +24,45 @@ function MadDiff.reverse_differentiate!(model::Optimizer)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, seed_λ, seed_zl, seed_zu
 ) where {S <: MOI.GreaterThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    i = get(vi_to_lb_idx, vi, 0)
-    !iszero(i) && (seed_zl[i] = val)
+    idx = get(ctx.primal_idx, vi, 0)
+    !iszero(idx) && (seed_zl[idx] = val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, seed_λ, seed_zl, seed_zu
 ) where {S <: MOI.LessThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    i = get(vi_to_ub_idx, vi, 0)
-    !iszero(i) && (seed_zu[i] = -val)
+    idx = get(ctx.primal_idx, vi, 0)
+    !iszero(idx) && (seed_zu[idx] = -val)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, seed_λ, seed_zl, seed_zu
 ) where {S <: MOI.Interval}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    i_lb = get(vi_to_lb_idx, vi, 0)
-    i_ub = get(vi_to_ub_idx, vi, 0)
-    !iszero(i_lb) && (seed_zl[i_lb] = val)
-    !iszero(i_ub) && (seed_zu[i_ub] = -val)
+    idx = get(ctx.primal_idx, vi, 0)
+    if !iszero(idx)
+        seed_zl[idx] = val
+        seed_zu[idx] = -val
+    end
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, seed_λ, seed_zl, seed_zu
 ) where {S <: MOI.EqualTo}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    i_lb = get(vi_to_lb_idx, vi, 0)
-    i_ub = get(vi_to_ub_idx, vi, 0)
-    !iszero(i_lb) && (seed_zl[i_lb] = val)
-    !iszero(i_ub) && (seed_zu[i_ub] = -val)
+    idx = get(ctx.primal_idx, vi, 0)
+    if !iszero(idx)
+        seed_zl[idx] = val
+        seed_zu[idx] = -val
+    end
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{F, S}, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx
+    ci::MOI.ConstraintIndex{F, S}, val, inner, ctx, seed_λ, seed_zl, seed_zu
 ) where {F, S}
     row = _constraint_row(inner, ci)
     seed_λ[row] = val
@@ -106,20 +108,18 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     n_con = NLPModels.get_ncon(solver.nlp)
     sens = _get_sensitivity_solver!(model)
 
-    seed_x = _get_seed_x!(model, ctx.n_x)
+    n_x = sens.dims.n_x
+    seed_x = _get_seed_x!(model, n_x)
     for (vi, val) in model.reverse.primal_seeds
         seed_x[ctx.primal_idx[vi]] = val
     end
 
     seed_λ = _get_seed_λ!(model, n_con)
-
-    seed_zl = _get_seed_zl!(model, sens.dims.n_lb)
-    seed_zu = _get_seed_zu!(model, sens.dims.n_ub)
-    vi_to_lb_idx = model.vi_to_lb_idx
-    vi_to_ub_idx = model.vi_to_ub_idx
+    seed_zl = _get_seed_zl!(model, n_x)
+    seed_zu = _get_seed_zu!(model, n_x)
 
     for (ci, val) in model.reverse.dual_seeds
-        _process_reverse_dual_input!(ci, val, inner, seed_λ, seed_zl, seed_zu, vi_to_lb_idx, vi_to_ub_idx)
+        _process_reverse_dual_input!(ci, val, inner, ctx, seed_λ, seed_zl, seed_zu)
     end
 
     seed_λ .*= -solver.cb.obj_sign

@@ -54,10 +54,6 @@ mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimize
     sensitivity_config::MadDiff.MadDiffConfig
     sensitivity_solver::Union{Nothing, MadDiff.MadDiffSolver}
     sensitivity_context::Union{Nothing, SensitivityContext}
-    vi_to_lb_idx::Dict{MOI.VariableIndex, Int}
-    vi_to_ub_idx::Dict{MOI.VariableIndex, Int}
-    idx_lb_cpu::Vector{Int}
-    idx_ub_cpu::Vector{Int}
     diff_time::T
 end
 
@@ -71,10 +67,6 @@ function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimi
         MadDiff.MadDiffConfig(),
         nothing,
         nothing,
-        Dict{MOI.VariableIndex, Int}(),
-        Dict{MOI.VariableIndex, Int}(),
-        Int[],
-        Int[],
         zero(T),
     )
 end
