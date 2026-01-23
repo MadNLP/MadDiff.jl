@@ -10,7 +10,7 @@ Optimizer = MOIExt.Optimizer
 DiffOpt.forward_differentiate!(model::Optimizer) = MadDiff.forward_differentiate!(model)
 DiffOpt.reverse_differentiate!(model::Optimizer) = MadDiff.reverse_differentiate!(model)
 DiffOpt.empty_input_sensitivities!(model::Optimizer) = MadDiff.empty_input_sensitivities!(model)
-MadDiff.nonlinear_diff_model(optimizer_constructor) = DiffOpt.JuMP.Model(MadDiff.diff_optimizer(optimizer_constructor))
+MadDiff.nonlinear_diff_model(optimizer_constructor; kwargs...) = DiffOpt.JuMP.Model(MadDiff.diff_optimizer(optimizer_constructor; kwargs...))
 
 MOI.set(m::Optimizer, ::DiffOpt.ForwardConstraintSet, ci::MOI.ConstraintIndex, set) =
     MOI.set(m, MadDiff.ForwardConstraintSet(), ci, set)
