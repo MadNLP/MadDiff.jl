@@ -16,6 +16,6 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [sources]
 MadDiff = {path = ".."}
-MadNLP = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
-MadNLPGPU = {rev = "mk/fixmoigpu_madnlpgpu", subdir = "lib/MadNLPGPU", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLPGPU = {rev = "master", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
 PGLearn = {rev = "mk/acp_param", url = "https://github.com/AI4OPT/PGLearn.jl"}

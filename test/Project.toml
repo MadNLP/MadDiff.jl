@@ -17,5 +17,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [sources]
 DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
 MadDiff = {path = ".."}
-MadNLP = {rev = "mk/fixmoigpu_madnlpgpu", url = "https://github.com/klamike/MadNLP.jl.git"}
-MadNLPGPU = {rev = "mk/fixmoigpu_madnlpgpu", subdir="lib/MadNLPGPU", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLPGPU = {rev = "master", subdir="lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
