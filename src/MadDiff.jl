@@ -18,6 +18,7 @@ export reset_sensitivity_cache!, make_param_pullback
 # implemented in MathOptInterfaceExt
 function diff_optimizer end
 function empty_input_sensitivities! end
+function nonlinear_diff_model end
 struct ForwardConstraintSet end
 struct ForwardVariablePrimal end
 struct ForwardConstraintDual end
