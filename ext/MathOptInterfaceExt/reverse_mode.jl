@@ -150,3 +150,10 @@ function MOI.get(
     ) where {T}
     return MOI.Parameter(model.reverse.param_outputs[ci])
 end
+
+function MadDiff.get_reverse_parameter(
+        model::Optimizer,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
+    ) where {T}
+    return model.reverse.param_outputs[ci]
+end

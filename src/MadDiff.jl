@@ -19,6 +19,7 @@ export reset_sensitivity_cache!, make_param_pullback
 function diff_optimizer end
 function empty_input_sensitivities! end
 function nonlinear_diff_model end
+function get_reverse_parameter end
 struct ForwardConstraintSet end
 struct ForwardVariablePrimal end
 struct ForwardConstraintDual end

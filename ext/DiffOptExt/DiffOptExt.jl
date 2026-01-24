@@ -29,4 +29,9 @@ MOI.get(m::Optimizer, ::DiffOpt.ReverseConstraintSet, ci::MOI.ConstraintIndex) =
 MOI.get(m::Optimizer, ::DiffOpt.DifferentiateTimeSec) =
     MOI.get(m, MadDiff.DifferentiateTimeSec())
 
+DiffOpt.get_reverse_parameter(
+    model::Optimizer,
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
+) where {T} = MadDiff.get_reverse_parameter(model, ci)
+
 end # module
