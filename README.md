@@ -4,7 +4,7 @@
 [![Build Status](https://github.com/klamike/MadDiff.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/klamike/MadDiff.jl/actions/workflows/ci.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/klamike/MadDiff.jl/branch/main/graph/badge.svg?token=ERB8DC2NZE)](https://codecov.io/gh/klamike/MadDiff.jl)
 
-MadDiff is a Julia package for differentiating MadSuite solvers. MadDiff relies on MadNLP's KKT system and linear solver infrastructure, allowing both the solve and the differentiation to run on the GPU, and to re-use the existing KKT system. It also integrates with the DiffOpt API for CPU.
+MadDiff is a Julia package for differentiating MadSuite solvers. MadDiff relies on MadNLP's KKT system and linear solver infrastructure, allowing both the solve and the differentiation to run on the GPU, and to re-use the existing KKT system. It supports LP, QP, and NLP using KKT systems from MadNLP, MadIPM, MadNCL, and HybridKKT. For reverse mode with custom KKT systems, define `adjoint_mul!` and `adjoint_solve!`; forward mode requires no additional modifications besides setting the `kkt_system` option. MadDiff also has an experimental integration with the DiffOpt API.
 
 ## NLPModels API
 
