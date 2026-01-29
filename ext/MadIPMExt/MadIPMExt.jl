@@ -75,22 +75,22 @@ function _refactorize_kkt_for_sensitivity!(kkt, solver::MPCSolver)
     return nothing
 end
 
-function _solve_with_refine!(
-    sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-    w::AbstractKKTVector,
-    cache,
-) where {T, KKT, VI, VB, FC, RC, F}
-    solve!(sens.kkt, w)
-    return nothing
-end
+# function _solve_with_refine!(
+#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
+#     w::AbstractKKTVector,
+#     cache,
+# ) where {T, KKT, VI, VB, FC, RC, F}
+#     solve!(sens.kkt, w)
+#     return nothing
+# end
 
-function _adjoint_solve_with_refine!(
-    sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-    w::AbstractKKTVector,
-    cache,
-) where {T, KKT, VI, VB, FC, RC, F}
-    adjoint_solve!(sens.kkt, w)
-    return nothing
-end
+# function _adjoint_solve_with_refine!(
+#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
+#     w::AbstractKKTVector,
+#     cache,
+# ) where {T, KKT, VI, VB, FC, RC, F}
+#     adjoint_solve!(sens.kkt, w)
+#     return nothing
+# end
 
 end # module
