@@ -51,5 +51,6 @@ const MADDIFF_KKTSYSTEM_OPTIONS = "MadDiffKKTSystemOptions"
 const MADDIFF_LINEARSOLVER = "MadDiffLinearSolver"
 const MADDIFF_LINEARSOLVER_OPTIONS = "MadDiffLinearSolverOptions"
 const MADDIFF_REGULARIZATION = "MadDiffRegularization"
+const MADDIFF_SKIP_KKT_REFACTORIZATION = "MadDiffSkipKKTRefactorization"
 
 end # module MadDiff

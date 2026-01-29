@@ -39,6 +39,8 @@ function MOI.get(m::Optimizer, attr::MOI.RawOptimizerAttribute)
         return m.sensitivity_config.linear_solver_options
     elseif name == MadDiff.MADDIFF_REGULARIZATION
         return m.sensitivity_config.regularization
+    elseif name == MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION
+        return m.sensitivity_config.skip_kkt_refactorization
     else
         return MOI.get(m.inner, attr)
     end
@@ -56,6 +58,8 @@ function MOI.set(m::Optimizer, attr::MOI.RawOptimizerAttribute, value)
         m.sensitivity_config.linear_solver_options = value
     elseif name == MadDiff.MADDIFF_REGULARIZATION
         m.sensitivity_config.regularization = value
+    elseif name == MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION
+        m.sensitivity_config.skip_kkt_refactorization = value
     else
         MOI.set(m.inner, attr, value)
         return
@@ -72,6 +76,7 @@ function MOI.supports(m::Optimizer, attr::MOI.RawOptimizerAttribute)
         MadDiff.MADDIFF_LINEARSOLVER,
         MadDiff.MADDIFF_LINEARSOLVER_OPTIONS,
         MadDiff.MADDIFF_REGULARIZATION,
+        MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION,
     ) || MOI.supports(m.inner, attr)
 end
 

@@ -6,7 +6,11 @@ using Printf
 
 PowerModels.silence()
 
+n_runs = 10
+warmup_case = "pglib_opf_case5_pjm"
 case = "pglib_opf_case1354_pegase"
+warmup_network = make_basic_network(pglib(warmup_case))
+warmup_data = PGLearn.OPFData(warmup_network)
 network = make_basic_network(pglib(case))
 data = PGLearn.OPFData(network)
 println("Case: $case ($(data.N) buses, $(data.G) gens, $(data.L) loads)")
@@ -16,7 +20,7 @@ function build_and_solve(data, optimizer)
     model = opf.model
     set_silent(model)
     optimize!(model)
-    return model, pd_params, qd_params, opf
+    return model
 end
 
 function run_reverse_sensitivity!(model, pg_vars)
@@ -29,37 +33,38 @@ function run_reverse_sensitivity!(model, pg_vars)
     return t
 end
 
-function benchmark_sensitivities(data; n_runs = 10)
-    for (name, optimizer) in [
-        ("MadDiff (skip rf)", MadDiff.diff_optimizer(MadNLP.Optimizer; config=MadDiffConfig(skip_kkt_refactorization=true))),
-        ("MadDiff (new KKT)", MadDiff.diff_optimizer(MadNLP.Optimizer; config=MadDiffConfig(kkt_system=MadNLP.SparseUnreducedKKTSystem))),
-        ("DiffOpt", () -> DiffOpt.diff_optimizer(MadNLP.Optimizer)),
-    ]
-        model, pd_params, qd_params, opf = build_and_solve(data, optimizer)
-
-        pg_vars = model[:pg]
-
-        # warmup
-        run_reverse_sensitivity!(model, pg_vars)
-
-        times = Float64[]
-
-        println("Starting benchmark $name (reverse mode)...")
-        for run in 1:n_runs
-            t = run_reverse_sensitivity!(model, pg_vars)
-            push!(times, t)
-            @printf("  Run %d: %.3f ms\n", run, t * 1000)
-        end
-
-        avg_time = sum(times) / n_runs * 1000  # ms
-        min_time = minimum(times) * 1000
-
-        println("\n$name: Reverse mode timing results (1 VJP per run, $n_runs runs):")
-        println("="^50)
-        @printf("Avg:     %9.3f ms\n", avg_time)
-        @printf("Min:     %9.3f ms\n", min_time)
-        println("="^50)
-    end
+for (name, optimizer) in [
+    ("MadDiff (reuse ReducedKKT)", optimizer_with_attributes(MadDiff.diff_optimizer(MadNLP.Optimizer), MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION => true)),
+    ("MadDiff (fresh UnreducedKKT)", optimizer_with_attributes(MadDiff.diff_optimizer(MadNLP.Optimizer), MadDiff.MADDIFF_KKTSYSTEM => MadNLP.SparseUnreducedKKTSystem)),
+    ("DiffOpt", () -> DiffOpt.diff_optimizer(MadNLP.Optimizer)),
+]
+    @info "Warmup $name"
+    model= build_and_solve(warmup_data, optimizer)
+    run_reverse_sensitivity!(model, model[:pg])
+    @info "Warmup $name done"
 end
 
-benchmark_sensitivities(data; n_runs = 10)
+
+for (name, optimizer) in [
+    ("MadDiff (reuse ReducedKKT)", optimizer_with_attributes(MadDiff.diff_optimizer(MadNLP.Optimizer), MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION => true)),
+    ("MadDiff (fresh UnreducedKKT)", optimizer_with_attributes(MadDiff.diff_optimizer(MadNLP.Optimizer), MadDiff.MADDIFF_KKTSYSTEM => MadNLP.SparseUnreducedKKTSystem)),
+    ("DiffOpt", () -> DiffOpt.diff_optimizer(MadNLP.Optimizer)),
+]
+    model = build_and_solve(data, optimizer)
+    println("Starting benchmark $name (reverse mode)...")
+    
+    times = Float64[]
+    for run in 1:n_runs
+        t = run_reverse_sensitivity!(model, model[:pg])
+        push!(times, t)
+        @printf("  Run %d: %.3f ms\n", run, t * 1000)
+    end
+    avg_time = sum(times) / n_runs * 1000  # ms
+    min_time = minimum(times) * 1000
+
+    println("\n$name: Reverse mode timing results (1 VJP per run, $n_runs runs):")
+    println("="^50)
+    @printf("Avg:     %9.3f ms\n", avg_time)
+    @printf("Min:     %9.3f ms\n", min_time)
+    println("="^50)
+end
