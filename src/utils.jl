@@ -9,14 +9,14 @@ struct ForwardCache{VT, VK, PV}
     kkt_rhs::VK
     kkt_sol::VK
     kkt_work::VK
+    dx_reduced::VT
+    dλ_reduced::VT
     dzl_reduced::VT
     dzu_reduced::VT
-    dλ_reduced::VT
-    dl_dp::PV
-    du_dp::PV
-    dx_reduced::VT
     d2L_dxdp::VT
     dg_dp::VT
+    dl_dp::PV
+    du_dp::PV
     dlcon_dp::VT
     ducon_dp::VT
 end
@@ -34,14 +34,14 @@ function _get_forward_cache!(sens::MadDiffSolver{T}) where {T}
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
+            _zeros_like(cb, T, cb.nvar),
+            _zeros_like(cb, T, n_con),
             _zeros_like(cb, T, length(cb.ind_lb)),
             _zeros_like(cb, T, length(cb.ind_ub)),
-            _zeros_like(cb, T, n_con),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            _zeros_like(cb, T, cb.nvar),
             _zeros_like(cb, T, n_x),
             _zeros_like(cb, T, n_con),
+            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
+            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             _zeros_like(cb, T, n_con),
             _zeros_like(cb, T, n_con),
         )
@@ -53,12 +53,12 @@ struct ReverseCache{VT, VK, PV}
     kkt_rhs::VK
     kkt_sol::VK
     kkt_work::VK
+    dx_reduced::VT
+    dλ_reduced::VT
     dzl_reduced::VT
     dzu_reduced::VT
-    dλ_reduced::VT
-    dl_dp::PV
-    du_dp::PV
-    dx_reduced::VT
+    dzl_full::PV
+    dzu_full::PV
     dL_dx::VT
     dL_dλ::VT
     dL_dzl::VT
@@ -79,12 +79,12 @@ function _get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
+            _zeros_like(cb, T, cb.nvar),
+            _zeros_like(cb, T, n_con),
             _zeros_like(cb, T, length(cb.ind_lb)),
             _zeros_like(cb, T, length(cb.ind_ub)),
-            _zeros_like(cb, T, n_con),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            _zeros_like(cb, T, cb.nvar),
             _zeros_like(cb, T, cb.nvar),
             _zeros_like(cb, T, n_con),
             _zeros_like(cb, T, length(cb.ind_lb)),
@@ -105,6 +105,16 @@ function _unpack_z!(result, cb, cache)
     cache.du_dp.values_ur .= dual_ub(cache.kkt_rhs)
     unpack_z!(result.dzl, cb, variable(cache.dl_dp))
     unpack_z!(result.dzu, cb, variable(cache.du_dp))
+    return nothing
+end
+
+function _unpack_z!(result, cb, cache::ReverseCache)
+    fill!(full(cache.dzl_full), zero(eltype(full(cache.dzl_full))))
+    fill!(full(cache.dzu_full), zero(eltype(full(cache.dzu_full))))
+    cache.dzl_full.values_lr .= dual_lb(cache.kkt_rhs)
+    cache.dzu_full.values_ur .= dual_ub(cache.kkt_rhs)
+    unpack_z!(result.dzl, cb, variable(cache.dzl_full))
+    unpack_z!(result.dzu, cb, variable(cache.dzu_full))
     return nothing
 end
 

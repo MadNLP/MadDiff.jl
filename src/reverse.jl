@@ -73,18 +73,18 @@ function _pack_vjp!(
     fill!(cache.dL_dλ, zero(T))
     fill!(cache.dL_dzl, zero(T))
     fill!(cache.dL_dzu, zero(T))
-    fill!(full(cache.dl_dp), zero(T))
-    fill!(full(cache.du_dp), zero(T))
+    fill!(full(cache.dzl_full), zero(T))
+    fill!(full(cache.dzu_full), zero(T))
 
     isnothing(dL_dx) || pack_x!(cache.dL_dx, cb, dL_dx)
     isnothing(dL_dλ) || pack_y!(cache.dL_dλ, cb, dL_dλ)
     if !isnothing(dL_dzl)
-        pack_z!(variable(cache.dl_dp), cb, dL_dzl)
-        cache.dL_dzl .= cache.dl_dp.values_lr
+        pack_z!(variable(cache.dzl_full), cb, dL_dzl)
+        cache.dL_dzl .= cache.dzl_full.values_lr
     end
     if !isnothing(dL_dzu)
-        pack_z!(variable(cache.du_dp), cb, dL_dzu)
-        cache.dL_dzu .= cache.du_dp.values_ur
+        pack_z!(variable(cache.dzu_full), cb, dL_dzu)
+        cache.dL_dzu .= cache.dzu_full.values_ur
     end
     return nothing
 end
