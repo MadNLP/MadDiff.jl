@@ -134,15 +134,15 @@ end
                            dL_dzl=nothing, dL_dzu=nothing)
 
 Compute reverse sensitivities (VJP). Returns a `ReverseResult` with fields
-`dp` and `dx`, `dλ`, `dzl`, `dzu` if requested.
+`dx`, `dλ`, `dzl`, `dzu`, if a pullback was provided to MadDiffSolver, `grad_p`.
 """
 function reverse_differentiate!(sens::MadDiffSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing)
     result = ReverseResult(sens)
     return reverse_differentiate!(result, sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 end
 
-function reverse_differentiate!(solver::AbstractMadNLPSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
+function reverse_differentiate!(solver::AbstractMadNLPSolver; param_pullback = nothing, dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
     config = MadDiffConfig(; kwargs...)
-    sens = MadDiffSolver(solver; config)
+    sens = MadDiffSolver(solver; config, param_pullback)
     return reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 end

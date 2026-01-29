@@ -21,6 +21,8 @@ for (KKTSystem, Callback) in [
     (MadNCL.K1sAuglagKKTSystem, MadNLP.SparseCallback),
     (MadNCL.K2rAuglagKKTSystem, MadNLP.SparseCallback),
     (HybridKKT.HybridCondensedKKTSystem, MadNLP.SparseCallback),
+    # TODO: Argos.jl (MixedAuglagKKTSystem, BieglerKKTSystem)
+    # TODO: CompressedSensingIPM.jl (FFTKKTSystem, CondensedFFTKKTSystem)
 ]
     # TODO: test LBFGS
     @testset "$(KKTSystem)" begin
@@ -118,7 +120,6 @@ const DX_TOL = 1e-6
 const Dλ_TOL = 1e-3  # TODO: investigate
 # (name, opts, dx_tol, dλ_tol, skip_equality)
 const KKT_CONFIGS = [
-    ("HybridCondensedKKT", Dict{Symbol, Any}(:kkt_system => HybridKKT.HybridCondensedKKTSystem), 5e-4, 5e-3, false),  # /!\ reduced tolerances for condensed
     ("SparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseKKTSystem), DX_TOL, Dλ_TOL, false),
     ("SparseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseCondensedKKTSystem, :bound_relax_factor => 1e-6), 5e-4, 5e-3, true),  # /!\ reduced tolerances for condensed
     ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, Dλ_TOL, false),
@@ -126,7 +127,8 @@ const KKT_CONFIGS = [
     ("DenseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
     ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
     ("NormalKKT", Dict{Symbol, Any}(:kkt_system => MadIPM.NormalKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
-    # TODO: implement MadNCL.Optimizer 
+    # TODO: implement MadNCL.Optimizer so we can test K1s and K2r here
+    ("HybridCondensedKKT", Dict{Symbol, Any}(:kkt_system => HybridKKT.HybridCondensedKKTSystem), 5e-4, 5e-3, false),  # /!\ reduced tolerances for condensed
 ]
 
 if HAS_CUDA
