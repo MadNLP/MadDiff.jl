@@ -1,17 +1,5 @@
-"""
-    adjoint_solve!(kkt::AbstractKKTSystem, w::AbstractKKTVector)
-
-Solve the adjoint KKT system ``Kᵀ x = w`` with the linear solver stored
-inside `kkt` and stores the result inplace inside the `AbstractKKTVector` `w`.
-
-"""
 function adjoint_solve! end
 
-"""
-    adjoint_mul!(w::AbstractKKTVector, kkt::AbstractKKTSystem, x::AbstractKKTVector)
-
-Apply the adjoint KKT operator ``Kᵀ`` to `x` and store the result in `w`.
-"""
 function adjoint_mul! end
 
 function adjoint_mul!(

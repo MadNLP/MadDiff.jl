@@ -1,3 +1,8 @@
+"""
+    MadDiffConfig(; kwargs...)
+
+Configuration options for MadDiff sensitivity solves.
+"""
 Base.@kwdef mutable struct MadDiffConfig
     kkt_system::Union{Nothing, Type} = nothing
     kkt_options::Union{Nothing, Dict} = nothing
@@ -7,6 +12,11 @@ Base.@kwdef mutable struct MadDiffConfig
     skip_kkt_refactorization::Bool = false
 end
 
+"""
+    MadDiffSolver(solver::AbstractMadNLPSolver; config=MadDiffConfig(), param_pullback=nothing, n_p=0)
+
+Create a sensitivity solver from a `MadNLP` solver.
+"""
 mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
@@ -60,6 +70,13 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     )
 end
 
+"""
+    reset_sensitivity_cache!(sens::MadDiffSolver)
+
+Clear cached buffers and rebuild the sensitivity KKT factorization.
+Call this after changing solver/KKT options or if the underlying model changed
+in-place (with the same dimensions).
+"""
 function reset_sensitivity_cache!(sens::MadDiffSolver)
     sens.forward_cache = nothing
     sens.reverse_cache = nothing
@@ -67,6 +84,14 @@ function reset_sensitivity_cache!(sens::MadDiffSolver)
     return sens
 end
 
+"""
+    forward_differentiate!(sens::MadDiffSolver; d2L_dxdp=nothing, dg_dp=nothing,
+                           dl_dp=nothing, du_dp=nothing, dlcon_dp=nothing,
+                           ducon_dp=nothing)
+
+Compute forward sensitivities (JVP). Returns a `ForwardResult` with fields
+`dx`, `dλ`, `dzl`, and `dzu`.
+"""
 function forward_differentiate!(
     sens::MadDiffSolver;
     d2L_dxdp = nothing,
@@ -104,6 +129,13 @@ function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing
     end
 end
 
+"""
+    reverse_differentiate!(sens::MadDiffSolver; dL_dx=nothing, dL_dλ=nothing,
+                           dL_dzl=nothing, dL_dzu=nothing)
+
+Compute reverse sensitivities (VJP). Returns a `ReverseResult` with fields
+`dp` and `dx`, `dλ`, `dzl`, `dzu` if requested.
+"""
 function reverse_differentiate!(sens::MadDiffSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing)
     result = ReverseResult(sens)
     return reverse_differentiate!(result, sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
