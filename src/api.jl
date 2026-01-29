@@ -1,77 +1,30 @@
-"""
-    MadDiffConfig(; kwargs...)
-
-Configuration options for `MadDiffSolver`.
-
-# Keyword Arguments
-- `kkt_system::Type`: KKT system type for sensitivity analysis. Defaults to re-using the solver's KKT system.
-- `kkt_options::Dict`: Options passed to KKT system constructor.
-- `linear_solver::Type`: Custom linear solver type for KKT system.
-- `linear_solver_options::Dict`: Options passed to linear solver constructor.
-- `reuse_kkt::Bool`: Whether to reuse the solver's KKT system (default: `true`). Ignored if `kkt_system`, `kkt_options`,
-                      `linear_solver`, or `linear_solver_options` are provided.
-- `regularization::Symbol`: Regularization strategy (`:solver`, `:none`, or `:inertia`. default: `:solver`).
-- `inertia_shift_step::Float64`: Step size for inertia-based regularization (default: `1.0e-6`).
-- `inertia_max_corrections::Int`: Maximum number of inertia correction attempts (default: `50`).
-- `should_warn_condensed::Bool`: Whether to warn when using condensed KKT systems (default: `false`).
-"""
 Base.@kwdef mutable struct MadDiffConfig
     kkt_system::Union{Nothing, Type} = nothing
     kkt_options::Union{Nothing, Dict} = nothing
     linear_solver::Union{Nothing, Type} = nothing
     linear_solver_options::Union{Nothing, Dict} = nothing
     reuse_kkt::Bool = true
-    regularization::Symbol = :solver
-    inertia_shift_step::Float64 = 1.0e-6
-    inertia_max_corrections::Int = 50
-    should_warn_condensed::Bool = false
+    skip_kkt_refactorization::Bool = false
 end
 
-"""
-    MadDiffSolver(solver; config=MadDiffConfig(), param_pullback=nothing, n_p=0)
-
-Create a sensitivity solver from a solved MadNLP solver.
-
-# Arguments
-- `solver`: A solved `MadNLP.AbstractMadNLPSolver`
-- `config`: Optional `MadDiffConfig` controlling KKT reuse and regularization.
-            If `reuse_kkt=true` and no custom KKT options are provided, we
-            reuse the solver's KKT system; otherwise we build a new one.
-- `param_pullback`: Optional callback to compute parameter gradients in reverse mode.
-               Signature: `param_pullback(out, adj_x, adj_λ, adj_zl, adj_zu, sens) -> out`.
-               The callback should fill `out` with ∂L/∂p for each parameter.
-- `n_p`: Number of parameters (required if `param_pullback` is provided).
-              Used to pre-allocate the gradient buffer.
-
-# Example
-```julia
-solver = MadNLPSolver(nlp)
-
-# Forward mode:
-sens = MadDiffSolver(solver)
-fwd_result = forward_differentiate!(sens; Dxp_L, Dp_g)
-
-# Reverse mode:
-sens = MadDiffSolver(solver; param_pullback, n_p)
-rev_result = reverse_differentiate!(sens; dL_dx)
-```
-"""
 mutable struct MadDiffSolver{
-    KKT <: MadNLP.AbstractKKTSystem,
-    Solver <: MadNLP.AbstractMadNLPSolver,
-    VI, VB, SC, FC, RC, F,
+    T,
+    KKT <: AbstractKKTSystem{T},
+    Solver <: AbstractMadNLPSolver{T},
+    VF, VB, FC, RC, F,
 }
     solver::Solver
     config::MadDiffConfig
     kkt::KKT
-    dims::SensitivityDims{VI, VB}
-    shared_cache::Union{Nothing, SC}
+    n_p::Int
+    fixed_idx::VF
+    is_eq::VB
     forward_cache::Union{Nothing, FC}
     reverse_cache::Union{Nothing, RC}
     param_pullback::F
 end
 
-function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfig = MadDiffConfig(), param_pullback = nothing, n_p = 0)
+function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig(), param_pullback = nothing, n_p = 0) where {T}
     assert_solved_and_feasible(solver)
 
     if !isnothing(param_pullback) && iszero(n_p)
@@ -79,79 +32,41 @@ function MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfi
     end
 
     cb = solver.cb
-    n_x = NLPModels.get_nvar(solver.nlp)
     n_con = NLPModels.get_ncon(solver.nlp)
 
-    lcon = NLPModels.get_lcon(solver.nlp)
-    ucon = NLPModels.get_ucon(solver.nlp)
-    x_array = MadNLP.full(solver.x)
-    is_eq = _to_bool_array(x_array, isfinite.(lcon) .& (lcon .== ucon))
+    x_array = full(solver.x)
+    n_con = NLPModels.get_ncon(solver.nlp)
+    is_eq = fill!(similar(x_array, Bool, n_con), false)
+    is_eq[solver.cb.ind_eq] .= true
     fixed_idx = _get_fixed_idx(cb, cb.ind_lb)
 
-    dims = SensitivityDims(n_x, n_con, n_p, fixed_idx, is_eq)
     kkt = _prepare_sensitivity_kkt(solver, config)
 
-    T = eltype(x_array)
     KKT = typeof(kkt)
     Solver = typeof(solver)
     VI = typeof(cb.ind_lb)
+    VF = typeof(fixed_idx)
     VB = typeof(is_eq)
     VT = typeof(x_array)
-    VK = MadNLP.UnreducedKKTVector{T,VT,VI}
-    PV = MadNLP.PrimalVector{T,VT,VI}
-    SC = SharedCache{VT, VK, PV}
-    FC = ForwardCache{VT}
-    RC = ReverseCache{VT}
+    VK = UnreducedKKTVector{T,VT,VI}
+    PV = PrimalVector{T,VT,VI}
+    FC = ForwardCache{VT, VK, PV}
+    RC = ReverseCache{VT, VK, PV}
     F = typeof(param_pullback)
-    return MadDiffSolver{KKT, Solver, VI, VB, SC, FC, RC, F}(
-        solver, config, kkt, dims,
-        nothing, nothing, nothing,
+    return MadDiffSolver{T, KKT, Solver, VF, VB, FC, RC, F}(
+        solver, config, kkt, n_p, fixed_idx, is_eq,
+        nothing, nothing,
         param_pullback,
     )
 end
 
-"""
-    reset_sensitivity_cache!(sens::MadDiffSolver) -> MadDiffSolver
-
-Clear cached forward/reverse work buffers and refresh the sensitivity KKT
-factorization. Use after re-solving or modifying solver so that
-sensitivities reflect the latest solution/problem.
-
-If not called, sensitivities will be incorrect!
-"""
 function reset_sensitivity_cache!(sens::MadDiffSolver)
-    sens.shared_cache = nothing
     sens.forward_cache = nothing
     sens.reverse_cache = nothing
     sens.kkt = _prepare_sensitivity_kkt(sens.solver, sens.config)
     return sens
 end
 
-"""
-    forward_differentiate!(sens::MadDiffSolver; kwargs...) -> ForwardResult
-
-Compute forward sensitivities (JVP) for a parameter perturbation.
-
-Allocates a new ForwardResult. For batch processing, use the pre-allocated variant
-`forward_differentiate!(result, sens; ...)` to avoid allocations.
-
-# Keyword Arguments
-- `d2L_dxdp`: Parameter-Lagrangian cross derivative times Δp: (∂²L/∂x∂p) * Δp (length = n_x)
-- `dg_dp`: Parameter-constraint LHS Jacobian times Δp: (∂g/∂p) * Δp (length = n_con)
-- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_x)
-- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_x)
-- `dlcon_dp`: Constraint lower bound perturbation times Δp: (∂lcon/∂p) * Δp (length = n_con)
-- `ducon_dp`: Constraint upper bound perturbation times Δp: (∂ucon/∂p) * Δp (length = n_con)
-
-# Notes
-For equality constraints (lcon[i] == ucon[i]), provide the same perturbation for both
-dlcon_dp[i] and ducon_dp[i]. The implementation uses (dlcon_dp + ducon_dp)/2 for equality constraints.
-For entries where lcon or ucon is ±Inf, the corresponding dlcon_dp/ducon_dp value is ignored.
-To obtain a full Jacobian w.r.t. parameters, call this once per parameter direction.
-
-# Returns
-- `ForwardResult` containing dx, dλ, dzl, dzu sensitivity vectors
-"""
 function forward_differentiate!(
     sens::MadDiffSolver;
     d2L_dxdp = nothing,
@@ -165,17 +80,7 @@ function forward_differentiate!(
     return forward_differentiate!(result, sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
 end
 
-"""
-    forward_differentiate!(solver; kwargs...) -> ForwardResult
-
-Convenience function for one-shot forward sensitivity computation.
-For multiple perturbations, use `MadDiffSolver`.
-
-# Arguments
-- `solver`: A solved `MadNLP.AbstractMadNLPSolver`
-- `kwargs...`: Passed to `forward_differentiate!` and `MadDiffConfig`
-"""
-function forward_differentiate!(solver::MadNLP.AbstractMadNLPSolver;
+function forward_differentiate!(solver::AbstractMadNLPSolver;
     d2L_dxdp = nothing, dg_dp = nothing, dl_dp = nothing, du_dp = nothing,
     dlcon_dp = nothing, ducon_dp = nothing, kwargs...
 )
@@ -184,36 +89,6 @@ function forward_differentiate!(solver::MadNLP.AbstractMadNLPSolver;
     return forward_differentiate!(sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
 end
 
-"""
-    make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dl_dp=nothing, du_dp=nothing)
-
-Create a `param_pullback` callback from parameter derivative matrices.
-
-The returned callback computes `grad_p = ∂L/∂p` using:
-
-    grad_p = -d2L_dxdp' * dx - dg_dp' * dλ + dlcon_dp' * dλ - dl_dp' * dzl + du_dp' * dzu
-
-# Arguments
-- `d2L_dxdp`: `∂²L/∂x∂p` - cross derivative of Lagrangian w.r.t. x and p (n_x × n_p)
-- `dg_dp`: `∂g/∂p` - derivative of constraint function w.r.t. p (n_con × n_p)
-- `dlcon_dp`: `∂lcon/∂p` - derivative of constraint lower bounds (n_con × n_p)
-- `ducon_dp`: `∂ucon/∂p` - derivative of constraint upper bounds (n_con × n_p)
-- `dl_dp`: `∂l/∂p` - derivative of variable lower bounds (n_x × n_p)
-- `du_dp`: `∂u/∂p` - derivative of variable upper bounds (n_x × n_p)
-
-# Equality Constraint Handling
-For equality constraints (`lcon == ucon`), the contributions from `dlcon_dp` and `ducon_dp`
-are scaled by 0.5 to handle AD through problem construction naturally giving equal values
-for both.
-
-# Example
-```julia
-# Parameter p affects constraint RHS: g(x) >= p
-param_pullback = make_param_pullback(dlcon_dp=dlcon_dp)
-sens = MadDiffSolver(solver; param_pullback, n_p)
-result = reverse_differentiate!(sens; dL_dx)
-```
-"""
 function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dl_dp=nothing, du_dp=nothing)
     return function(out, dx, dλ, dzl, dzu, sens)
         fill!(out, zero(eltype(out)))
@@ -229,40 +104,12 @@ function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing
     end
 end
 
-"""
-    reverse_differentiate!(sens::MadDiffSolver; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing) -> ReverseResult
-
-Compute reverse sensitivities (VJP) given loss gradients.
-
-Allocates a new ReverseResult. For batch processing, use the pre-allocated variant
-`reverse_differentiate!(result, sens; ...)` to avoid allocations.
-
-# Arguments
-- `dL_dx`: Gradient of loss with respect to primal variables (∂L/∂x)
-- `dL_dλ`: Gradient of loss with respect to constraint duals (∂L/∂λ)
-- `dL_dzl`: Gradient of loss with respect to lower bound duals (∂L/∂zl)
-- `dL_dzu`: Gradient of loss with respect to upper bound duals (∂L/∂zu)
-
-# Returns
-- `ReverseResult` containing:
-  - `dx`: Primal sensitivity vector
-  - `dλ`: Constraint dual sensitivity vector
-  - `dzl`: Lower bound dual sensitivity vector
-  - `dzu`: Upper bound dual sensitivity vector
-  - `grad_p`: Parameter gradient vector (if `param_pullback` was set; `nothing` otherwise)
-"""
 function reverse_differentiate!(sens::MadDiffSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing)
     result = ReverseResult(sens)
     return reverse_differentiate!(result, sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 end
 
-"""
-    reverse_differentiate!(solver; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, kwargs...) -> ReverseResult
-
-Convenience function for one-shot reverse sensitivity computation.
-For multiple gradient computations, use the `MadDiffSolver` API.
-"""
-function reverse_differentiate!(solver::MadNLP.AbstractMadNLPSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
+function reverse_differentiate!(solver::AbstractMadNLPSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
     config = MadDiffConfig(; kwargs...)
     sens = MadDiffSolver(solver; config)
     return reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)

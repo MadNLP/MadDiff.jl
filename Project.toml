@@ -9,7 +9,9 @@ MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 
 [weakdeps]
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
+HybridKKT = "59d292e8-f99c-4495-a4cc-613f4397570f"
 MadIPM = "4406d55e-1099-4ca6-ac6a-6cf051b10024"
+MadNCL = "434a0bcb-5a7c-42b2-a9d3-9e3f760e7af0"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
@@ -18,6 +20,8 @@ MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
 [extensions]
 DiffOptExt = ["DiffOpt", "MathOptInterface"]
 MadIPMExt = "MadIPM"
+MadNCLExt = "MadNCL"
+HybridKKTExt = "HybridKKT"
 MathOptInterfaceExt = ["MathOptInterface"]
 
 [compat]

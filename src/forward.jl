@@ -1,12 +1,3 @@
-"""
-    ForwardResult{VT}
-
-# Fields
-- `dx::VT`: Primal variable sensitivities
-- `dλ::VT`: Constraint dual sensitivities
-- `dzl::VT`: Lower bound dual sensitivities
-- `dzu::VT`: Upper bound dual sensitivities
-"""
 struct ForwardResult{VT}
     dx::VT
     dλ::VT
@@ -14,40 +5,18 @@ struct ForwardResult{VT}
     dzu::VT
 end
 
-function ForwardResult(sens::MadDiffSolver)
-    x_array = MadNLP.full(sens.solver.x)
-    T = eltype(x_array)
-    dims = sens.dims
+function ForwardResult(sens::MadDiffSolver{T}) where {T}
+    n_x = NLPModels.get_nvar(sens.solver.nlp)
+    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    cb = sens.solver.cb
     return ForwardResult(
-        _zeros_like(x_array, T, dims.n_x),
-        _zeros_like(x_array, T, dims.n_con),
-        _zeros_like(x_array, T, dims.n_x),
-        _zeros_like(x_array, T, dims.n_x),
+        _zeros_like(cb, T, n_x),
+        _zeros_like(cb, T, n_con),
+        _zeros_like(cb, T, n_x),
+        _zeros_like(cb, T, n_x),
     )
 end
 
-"""
-    forward_differentiate!(result::ForwardResult, sens::MadDiffSolver; kwargs...) -> ForwardResult
-
-Compute forward sensitivities (JVP) for a parameter perturbation, writing to pre-allocated `result`.
-
-# Keyword Arguments
-- `d2L_dxdp`: Parameter-Lagrangian cross derivative times Δp: (∂²L/∂x∂p) * Δp (length = n_x)
-- `dg_dp`: Parameter-constraint LHS Jacobian times Δp: (∂g/∂p) * Δp (length = n_con)
-- `dl_dp`: Variable lower bound perturbation times Δp: (∂l/∂p) * Δp (length = n_x)
-- `du_dp`: Variable upper bound perturbation times Δp: (∂u/∂p) * Δp (length = n_x)
-- `dlcon_dp`: Constraint lower bound perturbation times Δp: (∂lcon/∂p) * Δp (length = n_con)
-- `ducon_dp`: Constraint upper bound perturbation times Δp: (∂ucon/∂p) * Δp (length = n_con)
-
-# Notes
-For equality constraints (lcon[i] == ucon[i]), provide the same perturbation for both
-dlcon_dp[i] and ducon_dp[i]. The implementation uses (dlcon_dp + ducon_dp)/2 for equality constraints.
-For entries where lcon or ucon is ±Inf, the corresponding dlcon_dp/ducon_dp value is ignored.
-For fixed variables (lvar[i] == uvar[i]) with MakeParameter, the sensitivity dx[i] is set to dl_dp[i].
-
-# Returns
-- The same `result` object, with updated values
-"""
 function forward_differentiate!(
     result::ForwardResult,
     sens::MadDiffSolver;
@@ -58,131 +27,130 @@ function forward_differentiate!(
     dlcon_dp = nothing,
     ducon_dp = nothing,
 )
-    all(isnothing, (d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)) &&
-        throw(ArgumentError("At least one of d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp must be provided"))
+    _pack_jvp!(sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
+    _solve_jvp!(sens)
+    _unpack_jvp!(result, sens; dl_dp, du_dp)
+    return result
+end
 
-    dims = sens.dims
-    !isnothing(d2L_dxdp) && @lencheck dims.n_x d2L_dxdp
-    !isnothing(dg_dp) && @lencheck dims.n_con dg_dp
-    !isnothing(dl_dp) && @lencheck dims.n_x dl_dp
-    !isnothing(du_dp) && @lencheck dims.n_x du_dp
-    !isnothing(dlcon_dp) && @lencheck dims.n_con dlcon_dp
-    !isnothing(ducon_dp) && @lencheck dims.n_con ducon_dp
-
-    shared = _get_shared_cache!(sens)
+function _unpack_jvp!(result::ForwardResult, sens::MadDiffSolver; dl_dp=nothing, du_dp=nothing)
     cache = _get_forward_cache!(sens)
     cb = sens.solver.cb
 
-    _copy_and_scale_lag!(shared.dx_kkt, d2L_dxdp, cb, cache)
-    _copy_and_scale_con!(cache.dg_dp, dg_dp, cb)
-    _lcon = _copy_and_scale_con!(cache.dlcon_dp, dlcon_dp, cb)
-    _ucon = _copy_and_scale_con!(cache.ducon_dp, ducon_dp, cb)
-    _build_bound_pert!(shared.zl_buffer, dl_dp, _lcon, cb)
-    _build_bound_pert!(shared.zu_buffer, du_dp, _ucon, cb)
-
-    _forward_solve!(sens)
-
-    _forward_extract!(result, sens; dl_dp, du_dp)
+    unpack_x_fixed_zero!(result.dx, cb, primal(cache.kkt_rhs))
+    _set_fixed_sensitivity!(result.dx, dl_dp, du_dp, sens.fixed_idx)
+    unpack_y!(result.dλ, cb, dual(cache.kkt_rhs))
+    _unpack_z!(result, cb, cache)
 
     return result
 end
 
-function _build_bound_pert!(pv::MadNLP.PrimalVector, dvar_dp, dcon_dp, cb)
-    T = eltype(MadNLP.full(pv))
-    fill!(MadNLP.full(pv), zero(T))
-    _set_variable_pert!(pv, dvar_dp, cb)
-    _set_slack_pert!(pv, dcon_dp, cb)
-    return pv
-end
+function _pack_jvp!(
+    sens::MadDiffSolver{T};
+    d2L_dxdp = nothing,
+    dg_dp = nothing,
+    dl_dp = nothing,
+    du_dp = nothing,
+    dlcon_dp = nothing,
+    ducon_dp = nothing,
+) where {T}
+    all(isnothing, (d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)) &&
+        throw(ArgumentError("At least one of d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp must be provided"))
 
-function _forward_solve!(sens::MadDiffSolver)
-    shared = sens.shared_cache
-    cache = sens.forward_cache
-    dims = sens.dims
+    n_x = NLPModels.get_nvar(sens.solver.nlp)
+    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    !isnothing(d2L_dxdp) && @lencheck n_x d2L_dxdp
+    !isnothing(dg_dp) && @lencheck n_con dg_dp
+    !isnothing(dl_dp) && @lencheck n_x dl_dp
+    !isnothing(du_dp) && @lencheck n_x du_dp
+    !isnothing(dlcon_dp) && @lencheck n_con dlcon_dp
+    !isnothing(ducon_dp) && @lencheck n_con ducon_dp
 
-    _solve_jvp!(sens.kkt, shared.rhs,
-                shared.dx_kkt, cache.dg_dp,
-                shared.zl_buffer, shared.zu_buffer,
-                cache.dlcon_dp, cache.ducon_dp, dims)
-
-    _extract_sensitivities!(shared.dx_kkt, shared.dλ, shared.dzl_kkt, shared.dzu_kkt, shared.rhs, sens.solver)
-    return nothing
-end
-
-function _forward_extract!(result::ForwardResult, sens::MadDiffSolver; dl_dp=nothing, du_dp=nothing)
-    shared = sens.shared_cache
+    cache = _get_forward_cache!(sens)
     cb = sens.solver.cb
-    dims = sens.dims
 
-    _unpack_primal!(shared.dx_full, cb, shared.dx_kkt)
-    MadNLP.unpack_y!(shared.dλ, cb, shared.dλ)
-    _set_fixed_sensitivity!(shared.dx_full, dl_dp, du_dp, dims)
+    fill!(full(cache.dl_dp), zero(T))
+    fill!(full(cache.du_dp), zero(T))
+    fill!(cache.dx_reduced, zero(T))
+    fill!(cache.dg_dp, zero(T))
+    fill!(cache.dlcon_dp, zero(T))
+    fill!(cache.ducon_dp, zero(T))
 
-    copyto!(result.dx, shared.dx_full)
-    copyto!(result.dλ, shared.dλ)
-    _unpack_z!(result.dzl, cb, shared.dzl_kkt, shared.zl_buffer, shared.zl_buffer.values_lr)
-    _unpack_z!(result.dzu, cb, shared.dzu_kkt, shared.zu_buffer, shared.zu_buffer.values_ur)
-    return result
-end
-
-_get_bound_scale(kkt) = (kkt.l_lower, kkt.u_lower)
-_get_bound_scale(::MadNLP.SparseUnreducedKKTSystem) = (nothing, nothing)
-
-function _solve_jvp!(kkt, w, d2L_dxdp_vec, dg_dp_vec, zl_buffer, zu_buffer, dlcon_dp, ducon_dp, dims)
-    T = eltype(MadNLP.full(w))
-    fill!(MadNLP.full(w), zero(T))
-
-    _jvp_set_primal_lag!(MadNLP.primal(w), d2L_dxdp_vec)
-    _jvp_set_dual_lhs!(MadNLP.dual(w), dg_dp_vec)
-    _jvp_set_dual_rhs!(MadNLP.dual(w), dlcon_dp, ducon_dp, dims.is_eq)
-
-    l_scale, u_scale = _get_bound_scale(kkt)
-    _jvp_set_dual_lb!(MadNLP.dual_lb(w), l_scale, zl_buffer)
-    _jvp_set_dual_ub!(MadNLP.dual_ub(w), u_scale, zu_buffer)
-
-    MadNLP.solve!(kkt, w)
+    !isnothing(d2L_dxdp) && pack_x_obj!(cache.dx_reduced, cb, d2L_dxdp)
+    !isnothing(dg_dp) && pack_cons!(cache.dg_dp, cb, dg_dp)
+    !isnothing(dlcon_dp) && pack_cons!(cache.dlcon_dp, cb, dlcon_dp)
+    !isnothing(ducon_dp) && pack_cons!(cache.ducon_dp, cb, ducon_dp)
+    !isnothing(dl_dp) && pack_x!(variable(cache.dl_dp), cb, dl_dp)
+    !isnothing(du_dp) && pack_x!(variable(cache.du_dp), cb, du_dp)
+    !isnothing(dlcon_dp) && pack_slack!(slack(cache.dl_dp), cb, cache.dlcon_dp)
+    !isnothing(ducon_dp) && pack_slack!(slack(cache.du_dp), cb, cache.ducon_dp)
     return nothing
 end
 
-_jvp_set_primal_lag!(primal, ::Nothing) = nothing
-function _jvp_set_primal_lag!(primal, d2L_dxdp_vec)
-    n_x = length(d2L_dxdp_vec)
-    @views primal[1:n_x] .= .-d2L_dxdp_vec
+function _solve_jvp!(sens::MadDiffSolver{T}) where {T}
+    cache = _get_forward_cache!(sens)
+    kkt = sens.kkt
+    w = cache.kkt_rhs
+    n_x = length(cache.dx_reduced)
+
+    fill!(full(w), zero(T))
+    primal(w)[1:n_x] .= .-cache.dx_reduced
+    dual(w) .= .-cache.dg_dp .+ sens.is_eq .* (cache.dlcon_dp .+ cache.ducon_dp) ./ 2
+    _jvp_set_bound_rhs!(kkt, w, cache.dl_dp, cache.du_dp)
+
+    _solve_with_refine!(sens, w, cache)
     return nothing
 end
 
-_jvp_set_dual_lhs!(dual, ::Nothing) = nothing
-_jvp_set_dual_lhs!(dual, dg_dp_vec) = (dual .= .-dg_dp_vec;)
+function _solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
+    d = cache.kkt_sol
+    work = cache.kkt_work
 
-function _jvp_set_dual_rhs!(dual, dlcon_dp, ::Nothing, is_eq)
-    dual .+= is_eq .* dlcon_dp
+    copyto!(full(d), full(w))
+    solver = sens.solver
+    iterator = if sens.kkt === solver.kkt
+        solver.iterator
+    else
+        MadNLP.RichardsonIterator(
+            sens.kkt;
+            opt=solver.iterator.opt,
+            logger=solver.iterator.logger,
+            cnt=solver.cnt,
+        )
+    end
+    solver.cnt.linear_solver_time += @elapsed begin
+        if MadNLP.solve_refine!(d, iterator, w, work)
+            # ok
+        elseif MadNLP.improve!(sens.kkt.linear_solver)
+            MadNLP.solve_refine!(d, iterator, w, work)
+        end
+    end
+    copyto!(full(w), full(d))
     return nothing
 end
-function _jvp_set_dual_rhs!(dual, ::Nothing, ducon_dp, is_eq)
-    dual .+= is_eq .* ducon_dp
+
+function _jvp_set_bound_rhs!(kkt, w, dl_dp, du_dp)
+    dual_lb(w) .= kkt.l_lower .* dl_dp.values_lr
+    dual_ub(w) .= .-kkt.u_lower .* du_dp.values_ur
     return nothing
 end
-function _jvp_set_dual_rhs!(dual, dlcon_dp, ducon_dp, is_eq)
-    dual .+= is_eq .* (dlcon_dp .+ ducon_dp) ./ 2
-    return nothing
-end
-
-_jvp_set_dual_lb!(dual, ::Nothing, pv::MadNLP.PrimalVector) = (dual .= pv.values_lr;)
-_jvp_set_dual_lb!(dual, scale, pv::MadNLP.PrimalVector) = (dual .= scale .* pv.values_lr;)
-_jvp_set_dual_ub!(dual, ::Nothing, pv::MadNLP.PrimalVector) = (dual .= .-pv.values_ur;)
-_jvp_set_dual_ub!(dual, scale, pv::MadNLP.PrimalVector) = (dual .= .-scale .* pv.values_ur;)
-_jvp_set_dual_rhs!(dual, ::Nothing, ::Nothing, is_eq) = nothing
-
-function _set_fixed_sensitivity!(dx, dl_dp, du_dp, dims)
-    isempty(dims.fixed_idx) && return nothing
-    _set_dx_fixed!(dx, dl_dp, du_dp, dims)
+function _jvp_set_bound_rhs!(::SparseUnreducedKKTSystem, w, dl_dp, du_dp)
+    dual_lb(w) .= dl_dp.values_lr
+    dual_ub(w) .= .-du_dp.values_ur
     return nothing
 end
 
-_set_dx_fixed!(dx, ::Nothing, ::Nothing, dims) = nothing
-_set_dx_fixed!(dx, dl_dp, ::Nothing, dims) = (dx[dims.fixed_idx] .= dl_dp[dims.fixed_idx];)
-_set_dx_fixed!(dx, ::Nothing, du_dp, dims) = (dx[dims.fixed_idx] .= du_dp[dims.fixed_idx];)
-function _set_dx_fixed!(dx, dl_dp, du_dp, dims)
-    dx[dims.fixed_idx] .= (dl_dp[dims.fixed_idx] .+ du_dp[dims.fixed_idx]) ./ 2
+_set_fixed_sensitivity!(dx, dl_dp, du_dp, ::Nothing) = nothing
+function _set_fixed_sensitivity!(dx, dl_dp, du_dp, fixed_idx)
+    isempty(fixed_idx) && return nothing
+    if isnothing(dl_dp) && isnothing(du_dp)
+        return nothing
+    elseif isnothing(du_dp)
+        dx[fixed_idx] .= dl_dp[fixed_idx]
+    elseif isnothing(dl_dp)
+        dx[fixed_idx] .= du_dp[fixed_idx]
+    else
+        dx[fixed_idx] .= (dl_dp[fixed_idx] .+ du_dp[fixed_idx]) ./ 2
+    end
     return nothing
 end

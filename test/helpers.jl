@@ -51,8 +51,12 @@ function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
     return dx, dλ, dzl, dzu
 end
 
-function run_diffopt(build_model; param_idx = 1, dp = 1.0)
-    model = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+function _wrap_optimizer(optimizer, mad_opts)
+    return (;kwargs...) -> optimizer(; kwargs..., mad_opts...)
+end
+
+function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer=MadNLP.Optimizer, mad_opts...)
+    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
     set_silent(model)
     vars, params = build_model(model)
@@ -73,16 +77,41 @@ function run_diffopt(build_model; param_idx = 1, dp = 1.0)
     return dx, dλ, dzl, dzu
 end
 
-function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, mad_opts...)
-    use_ones = isnothing(dL_dx) && isnothing(dL_dλ) && isnothing(dL_dzl) && isnothing(dL_dzu)
-    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+    if !isnothing(dL_dx)
+        for (i, v) in enumerate(vars)
+            MOI.set(model, DiffOpt.ReverseVariablePrimal(), v, dL_dx[i])
+        end
+    end
+    if !isnothing(dL_dλ)
+        for (i, c) in enumerate(cons)
+            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dλ[i])
+        end
+    end
+    if !isnothing(dL_dzl)
+        for (i, c) in enumerate(lb_cons)
+            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dzl[i])
+        end
+    end
+    if !isnothing(dL_dzu)
+        for (i, c) in enumerate(ub_cons)
+            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dzu[i])
+        end
+    end
+    return nothing
+end
+
+function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    all(isnothing, (dL_dx, dL_dλ, dL_dzl, dL_dzu)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dλ, dL_dzl, dL_dzu must be provided"))
+    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
         # FIXME: we need to make sure linear_solver is passed to madnlp here
         mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
         optimizer = (;kwargs...) -> MadNLP.Optimizer(linear_solver=CUDSSSolver; kwargs...)
         model = Model(MadDiff.diff_optimizer(optimizer; mad_opts_filtered...))
         MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
     else
-        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts...))
     end
     set_silent(model)
     vars, params = build_model(model)
@@ -93,30 +122,7 @@ function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
 
     DiffOpt.empty_input_sensitivities!(model)
 
-    if use_ones || !isnothing(dL_dx)
-        vals = use_ones ? ones(length(vars)) : dL_dx
-        for (i, v) in enumerate(vars)
-            MOI.set(model, DiffOpt.ReverseVariablePrimal(), v, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dλ)
-        vals = use_ones ? ones(length(cons)) : dL_dλ
-        for (i, c) in enumerate(cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dzl)
-        vals = use_ones ? ones(length(lb_cons)) : dL_dzl
-        for (i, c) in enumerate(lb_cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dzu)
-        vals = use_ones ? ones(length(ub_cons)) : dL_dzu
-        for (i, c) in enumerate(ub_cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
+    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 
     DiffOpt.reverse_differentiate!(model)
 
@@ -124,10 +130,10 @@ function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
     return [MOI.get(model, DiffOpt.ReverseConstraintSet(), ParameterRef(p)).value for p in params_list]
 end
 
-function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing)
-    use_ones = isnothing(dL_dx) && isnothing(dL_dλ) && isnothing(dL_dzl) && isnothing(dL_dzu)
-
-    model = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    all(isnothing, (dL_dx, dL_dλ, dL_dzl, dL_dzu)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dλ, dL_dzl, dL_dzu must be provided"))
+    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
     set_silent(model)
     vars, params = build_model(model)
@@ -138,30 +144,7 @@ function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
 
     DiffOpt.empty_input_sensitivities!(model)
 
-    if use_ones || !isnothing(dL_dx)
-        vals = use_ones ? ones(length(vars)) : dL_dx
-        for (i, v) in enumerate(vars)
-            MOI.set(model, DiffOpt.ReverseVariablePrimal(), v, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dλ)
-        vals = use_ones ? ones(length(cons)) : dL_dλ
-        for (i, c) in enumerate(cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dzl)
-        vals = use_ones ? ones(length(lb_cons)) : dL_dzl
-        for (i, c) in enumerate(lb_cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
-    if use_ones || !isnothing(dL_dzu)
-        vals = use_ones ? ones(length(ub_cons)) : dL_dzu
-        for (i, c) in enumerate(ub_cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, vals[i])
-        end
-    end
+    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
 
     DiffOpt.reverse_differentiate!(model)
 
@@ -174,8 +157,8 @@ function get_param(params, param_idx)
 end
 
 
-function get_problem_dims(build_model)
-    model = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+function get_problem_dims(build_model; optimizer=MadNLP.Optimizer, mad_opts...)
+    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
     set_silent(model)
     vars, params = build_model(model)
@@ -187,76 +170,83 @@ function get_problem_dims(build_model)
     return length(vars), length(cons), length(lb_cons), length(ub_cons)
 end
 
-function stack_solution_forward(model, p_vals, params, vars, cons, lb_cons, ub_cons)
-    params_list = params isa AbstractArray ? params : [params]
-    for (i, p) in enumerate(params_list)
-        set_parameter_value(p, p_vals[i])
+
+function _simple_lp()
+    c = ones(2)
+    Hrows = Int[]
+    Hcols = Int[]
+    Hvals = Float64[]
+    Arows = [1, 1]
+    Acols = [1, 2]
+    Avals = [1.0; 1.0]
+    c0 = 0.0
+    lvar = [0.0; 0.0]
+    uvar = [Inf; Inf]
+    lcon = [1.0]
+    ucon = [1.0]
+    x0 = ones(2)
+
+    return QuadraticModel(c, Hrows, Hcols, Hvals; Arows, Acols, Avals, lcon, ucon, lvar, uvar, c0, x0, name = "simpleLP")
+end
+
+function _build_kkt(KKTSystem, Callback)
+    nlp = if KKTSystem == MadIPM.NormalKKTSystem
+        _simple_lp()
+    elseif KKTSystem == MadNCL.K1sAuglagKKTSystem
+        MadNCL.NCLModel(MadNLPTests.HS15Model())
+    elseif KKTSystem == MadNCL.K2rAuglagKKTSystem
+        MadNCL.NCLModel(MadNLPTests.HS15Model())
+    else
+        MadNLPTests.HS15Model()
     end
-    optimize!(model)
-    x_vals = Float64[value(v) for v in vars]
-    λ_vals = Float64[dual(c) for c in cons]
-    zl_vals = Float64[dual(c) for c in lb_cons]
-    zu_vals = Float64[dual(c) for c in ub_cons]
-    return vcat(x_vals, λ_vals, zl_vals, zu_vals)
-end
+    cb = MadNLP.create_callback(Callback, nlp)
 
-function run_finitediff_forward(build_model; param_idx = 1, dp = 1.0)
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
-    set_silent(model)
-    vars, params = build_model(model)
-    optimize!(model)
-
-    cons = get_constraint_refs(model)
-    lb_cons, ub_cons = get_bound_constraint_refs(model)
-
-    params_list = params isa AbstractArray ? params : [params]
-    n_params = length(params_list)
-    p_base = Float64[parameter_value(p) for p in params_list]
-
-    jac = FiniteDiff.finite_difference_jacobian(
-        p -> stack_solution_forward(model, p, params, vars, cons, lb_cons, ub_cons),
-        p_base
+    kkt = MadNLP.create_kkt_system(
+        KKTSystem,
+        cb,
+        KKTSystem <: MadNLP.AbstractDenseKKTSystem ? MadNLP.LapackCPUSolver : MadNLP.MumpsSolver;
     )
 
-    Δp = zeros(n_params)
-    Δp[param_idx] = dp
+    MadNLP.initialize!(kkt)
 
-    Δs = jac * Δp
+    x0 = NLPModels.get_x0(cb.nlp)
+    y0 = NLPModels.get_y0(cb.nlp)
+    jac = MadNLP.get_jacobian(kkt)
+    MadNLP._eval_jac_wrapper!(cb, x0, jac)
+    MadNLP.compress_jacobian!(kkt)
+    hess = MadNLP.get_hessian(kkt)
+    MadNLP._eval_lag_hess_wrapper!(cb, x0, y0, hess)
+    MadNLP.compress_hessian!(kkt)
 
-    n_x = length(vars)
-    n_con = length(cons)
-    n_lb = length(lb_cons)
-    n_ub = length(ub_cons)
+    fill!(kkt.l_lower, 1e-3)
+    fill!(kkt.u_lower, 1e-3)
+    MadNLP._set_aug_diagonal!(kkt)
 
-    dx = Δs[1:n_x]
-    dλ = Δs[n_x+1:n_x+n_con]
-    dzl = Δs[n_x+n_con+1:n_x+n_con+n_lb]
-    dzu = Δs[n_x+n_con+n_lb+1:end]
+    MadNLP.build_kkt!(kkt)
+    MadNLP.factorize!(kkt.linear_solver)
 
-    return dx, dλ, dzl, dzu
+    return kkt
 end
 
-function run_finitediff_reverse(build_model, dL_dx_vals, dL_dλ_vals, dL_dzl_vals, dL_dzu_vals)
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
-    set_silent(model)
-    vars, params = build_model(model)
-    optimize!(model)
+function _run_adjoint_tests(KKTSystem, Callback)
+    kkt = _build_kkt(KKTSystem, Callback)
+    Random.seed!(42)
+    v = MadNLP.UnreducedKKTVector(kkt)
+    w = MadNLP.UnreducedKKTVector(kkt)
+    randn!(MadNLP.full(v))
+    randn!(MadNLP.full(w))
 
-    cons = get_constraint_refs(model)
-    lb_cons, ub_cons = get_bound_constraint_refs(model)
+    x = copy(w)
+    y = copy(v)
+    MadNLP.solve!(kkt, x)
+    MadDiff.adjoint_solve!(kkt, y)
+    @test dot(v, x) ≈ dot(y, w) atol=1e-8
 
-    params_list = params isa AbstractArray ? params : [params]
-    n_params = length(params_list)
-    p_base = Float64[parameter_value(p) for p in params_list]
-
-    jac = FiniteDiff.finite_difference_jacobian(
-        p -> stack_solution_forward(model, p, params, vars, cons, lb_cons, ub_cons),
-        p_base
-    )
-
-    dL_ds = Float64[dL_dx_vals; dL_dλ_vals; dL_dzl_vals; dL_dzu_vals]
-
-    grad_p = jac' * dL_ds
-
-    return grad_p
+    x = MadNLP.UnreducedKKTVector(kkt)
+    y = MadNLP.UnreducedKKTVector(kkt)
+    randn!(MadNLP.full(x))
+    MadNLP.mul!(w, kkt, x)
+    MadDiff.adjoint_mul!(y, kkt, v)
+    @test dot(v, w) ≈ dot(y, x) atol=1e-8
+    return
 end

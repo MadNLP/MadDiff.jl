@@ -2,20 +2,29 @@
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
-FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
+HybridKKT = "59d292e8-f99c-4495-a4cc-613f4397570f"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MadDiff = "0873d656-25a4-4889-b982-f3e325818f6d"
+MadIPM = "4406d55e-1099-4ca6-ac6a-6cf051b10024"
+MadNCL = "434a0bcb-5a7c-42b2-a9d3-9e3f760e7af0"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 MadNLPGPU = "d72a61cc-809d-412f-99be-fd81f4b8a598"
+MadNLPTests = "b52a2a03-04ab-4a5f-9698-6a2deff93217"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 NLPModelsJuMP = "792afdf1-32c1-5681-94e0-d7bf7a5df49e"
+QuadraticModels = "f468eda6-eac5-11e8-05a5-ff9e497bcd19"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
+HybridKKT = {rev = "mk/latest", url = "https://github.com/klamike/HybridKKT.jl.git"}
 MadDiff = {path = ".."}
+MadIPM = {rev = "mk/flip", url = "https://github.com/klamike/MadIPM.jl.git"}
+MadNCL = {rev = "mk/latest", url = "https://github.com/klamike/MadNCL.jl.git"}
 MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
-MadNLPGPU = {rev = "master", subdir="lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLPGPU = {rev = "master", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLPTests = {rev = "master", subdir = "lib/MadNLPTests", url = "https://github.com/MadNLP/MadNLP.jl.git"}

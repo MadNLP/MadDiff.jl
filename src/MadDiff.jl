@@ -1,12 +1,31 @@
 module MadDiff
 
 import MadNLP
+import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
+    set_aug_diagonal!, set_aug_rhs!, get_slack_regularization, dual_inf_perturbation!,
+    inertia_correction!, solve!, multi_solve!, solve_refine_wrapper!, improve!, RichardsonIterator,
+    full, primal, variable, slack, dual, dual_lb, dual_ub, primal_dual, num_variables,
+    SOLVE_SUCCEEDED, SOLVED_TO_ACCEPTABLE_LEVEL,
+    create_kkt_system, initialize!,
+    AbstractKKTSystem, AbstractCondensedKKTSystem, AbstractDenseKKTSystem,
+    SparseUnreducedKKTSystem, CompactLBFGS,
+    SparseCondensedKKTSystem, DenseCondensedKKTSystem,
+    ScaledSparseKKTSystem, SparseKKTSystem, DenseKKTSystem, 
+    AbstractKKTVector, UnreducedKKTVector, PrimalVector,
+    unpack_y!, unpack_z!,
+    eval_jac_wrapper!, eval_lag_hess_wrapper!,
+    AbstractCallback, SparseCallback, MakeParameter, create_array,
+    @debug, @sprintf, _symv!
+
 const NLPModels = MadNLP.NLPModels
 import MadNLP.NLPModels: @lencheck
-import LinearAlgebra: dot, mul!
+import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
 
-include("utils.jl")
+include("madnlp.jl")
+include("adjoint.jl")
 include("api.jl")
+include("utils.jl")
+include("shim.jl")
 include("kkt.jl")
 include("forward.jl")
 include("reverse.jl")
