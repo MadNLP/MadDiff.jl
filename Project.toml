@@ -26,8 +26,9 @@ MathOptInterfaceExt = ["MathOptInterface"]
 
 [compat]
 DiffOpt = "0.5.4"
+HybridKKT = "0.2.0"
+julia = "1.12"
+MadIPM = "0.1.3"
+MadNCL = "0.1.1"
+MadNLP = "0.8.12"
 MathOptInterface = "1.20"
-julia = "1.9"
-
-[extras]
-MadIPM = "4406d55e-1099-4ca6-ac6a-6cf051b10024"
