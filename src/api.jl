@@ -21,7 +21,7 @@ mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
     Solver <: AbstractMadNLPSolver{T},
-    VF, VB, FC, RC, F,
+    VF, VB, FC, RC, F, E
 }
     solver::Solver
     config::MadDiffConfig
@@ -32,9 +32,10 @@ mutable struct MadDiffSolver{
     forward_cache::Union{Nothing, FC}
     reverse_cache::Union{Nothing, RC}
     param_pullback::F
+    ext::E
 end
 
-function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig(), param_pullback = nothing, n_p = 0) where {T}
+function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig(), param_pullback = nothing, n_p = 0, extension = nothing) where {T}
     assert_solved_and_feasible(solver)
 
     if !isnothing(param_pullback) && iszero(n_p)
@@ -63,10 +64,12 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     FC = ForwardCache{VT, VK, PV}
     RC = ReverseCache{VT, VK, PV}
     F = typeof(param_pullback)
-    return MadDiffSolver{T, KKT, Solver, VF, VB, FC, RC, F}(
+    E = typeof(extension)
+    return MadDiffSolver{T, KKT, Solver, VF, VB, FC, RC, F, E}(
         solver, config, kkt, n_p, fixed_idx, is_eq,
         nothing, nothing,
         param_pullback,
+        extension,
     )
 end
 

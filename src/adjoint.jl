@@ -230,8 +230,8 @@ end
 # Adjoint solve for the unreduced KKT system (SparseUnreducedKKTSystem).
 #
 # Forward solve:
-#   r̂ₗ = Dₗ⁻¹ rₗ, r̂ᵤ = Dᵤ⁻¹ rᵤ   (with Dₗ = diag(l_lower_aug), Dᵤ = diag(u_lower_aug))
-#   K x = r̂
+#   rₗ = Dₗ⁻¹ rₗ, rᵤ = Dᵤ⁻¹ rᵤ   (with Dₗ = diag(l_lower_aug), Dᵤ = diag(u_lower_aug))
+#   K x = r
 #   xₗ = -Dₗ xₗ,  xᵤ = Dᵤ xᵤ
 #
 # Adjoint (reverse) updates:

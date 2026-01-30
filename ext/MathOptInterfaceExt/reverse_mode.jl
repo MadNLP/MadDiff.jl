@@ -68,8 +68,9 @@ function _process_reverse_dual_input!(
     dL_dλ[row] = val
 end
 
-function _make_param_pullback_closure(model, ctx::SensitivityContext{T}) where {T}
+function _make_param_pullback_closure()
     return function(out, dx, dλ, dzl, dzu, sens)
+        model = sens.ext
         x = model.inner.result.solution
         n_con = length(dλ)
         solver = model.inner.solver
@@ -90,7 +91,7 @@ function _make_param_pullback_closure(model, ctx::SensitivityContext{T}) where {
             dλ_cpu = (dλ isa Vector ? dλ : Array(dλ)) .* obj_sign
         end
 
-        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dλ_cpu, ctx)
+        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dλ_cpu, model.sensitivity_context)
         copyto!(out, grad_p)
         return out
     end

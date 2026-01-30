@@ -111,6 +111,43 @@ end
 
     @test isapprox(dx_mad, dx_ref; atol=1e-6)
     @test isapprox(dp_mad, dp_ref; atol=1e-6)
+
+    @testset "empty_input_sensitivities!" begin
+        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+        set_silent(model)
+        @variable(model, x)
+        @variable(model, p1 in MOI.Parameter(1.0))
+        @variable(model, p2 in MOI.Parameter(1.0))
+        @constraint(model, x >= p1 + 2p2)
+        @objective(model, Min, x^2)
+        optimize!(model)
+
+        model_ref = Model(() -> DiffOpt.diff_optimizer(MadNLP.Optimizer))
+        MOI.set(model_ref, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        set_silent(model_ref)
+        @variable(model_ref, x_ref)
+        @variable(model_ref, p1_ref in MOI.Parameter(1.0))
+        @variable(model_ref, p2_ref in MOI.Parameter(1.0))
+        @constraint(model_ref, x_ref >= p1_ref + 2p2_ref)
+        @objective(model_ref, Min, x_ref^2)
+        optimize!(model_ref)
+
+        function _forward_dx(model, x, param, dp)
+            DiffOpt.empty_input_sensitivities!(model)
+            MOI.set(model, DiffOpt.ForwardConstraintSet(), ParameterRef(param), MOI.Parameter(dp))
+            DiffOpt.forward_differentiate!(model)
+            return MOI.get(model, DiffOpt.ForwardVariablePrimal(), x)
+        end
+
+        dx1_mad = _forward_dx(model, x, p1, 1.0)
+        dx2_mad = _forward_dx(model, x, p1, 2.0)
+
+        dx1_ref = _forward_dx(model_ref, x_ref, p1_ref, 1.0)
+        dx2_ref = _forward_dx(model_ref, x_ref, p1_ref, 2.0)
+
+        @test isapprox(dx1_mad, dx1_ref; atol=1e-6)
+        @test isapprox(dx2_mad, dx2_ref; atol=1e-6)
+    end
 end
 end
 

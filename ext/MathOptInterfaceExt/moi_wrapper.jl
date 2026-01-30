@@ -133,8 +133,9 @@ function _get_sensitivity_solver!(model::Optimizer)
         model.sensitivity_solver = MadDiff.MadDiffSolver(
             model.inner.solver;
             config = model.sensitivity_config,
-            param_pullback = _make_param_pullback_closure(model, ctx),
+            param_pullback = _make_param_pullback_closure(),
             n_p = ctx.n_p,
+            extension = model,
         )
     end
     return model.sensitivity_solver
