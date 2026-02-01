@@ -76,7 +76,7 @@ function _pack_vjp!(
     fill!(full(cache.dzl_full), zero(T))
     fill!(full(cache.dzu_full), zero(T))
 
-    isnothing(dL_dx) || pack_x!(cache.dL_dx, cb, dL_dx)
+    isnothing(dL_dx) || pack_x_obj!(cache.dL_dx, cb, dL_dx)
     isnothing(dL_dλ) || pack_y!(cache.dL_dλ, cb, dL_dλ)
     if !isnothing(dL_dzl)
         pack_z!(variable(cache.dzl_full), cb, dL_dzl)
