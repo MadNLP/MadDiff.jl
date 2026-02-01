@@ -40,7 +40,8 @@ function _unpack_jvp!(result::ForwardResult, sens::MadDiffSolver; dl_dp=nothing,
     unpack_x_fixed_zero!(result.dx, cb, primal(cache.kkt_rhs))
     _set_fixed_sensitivity!(result.dx, dl_dp, du_dp, sens.fixed_idx)
     unpack_y!(result.dλ, cb, dual(cache.kkt_rhs))
-    _unpack_z!(result, cb, cache)
+    unpack_dzl!(result, cb, cache)
+    unpack_dzu!(result, cb, cache)
 
     return result
 end

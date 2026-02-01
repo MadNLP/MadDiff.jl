@@ -98,26 +98,6 @@ end
 
 _zeros_like(cb, ::Type{T}, n::Int) where {T} = fill!(create_array(cb, T, n), zero(T))
 
-function _unpack_z!(result, cb, cache)
-    fill!(full(cache.dl_dp), zero(eltype(full(cache.dl_dp))))
-    fill!(full(cache.du_dp), zero(eltype(full(cache.du_dp))))
-    cache.dl_dp.values_lr .= dual_lb(cache.kkt_rhs)
-    cache.du_dp.values_ur .= dual_ub(cache.kkt_rhs)
-    unpack_z!(result.dzl, cb, variable(cache.dl_dp))
-    unpack_z!(result.dzu, cb, variable(cache.du_dp))
-    return nothing
-end
-
-function _unpack_z!(result, cb, cache::ReverseCache)
-    fill!(full(cache.dzl_full), zero(eltype(full(cache.dzl_full))))
-    fill!(full(cache.dzu_full), zero(eltype(full(cache.dzu_full))))
-    cache.dzl_full.values_lr .= dual_lb(cache.kkt_rhs)
-    cache.dzu_full.values_ur .= dual_ub(cache.kkt_rhs)
-    unpack_z!(result.dzl, cb, variable(cache.dzl_full))
-    unpack_z!(result.dzu, cb, variable(cache.dzu_full))
-    return nothing
-end
-
 _get_fixed_idx(cb::AbstractCallback, ::Any) = nothing
 function _get_fixed_idx(cb::SparseCallback{T,VT,VI,NLP,FH}, ref_array) where {T,VT,VI,NLP,FH<:MakeParameter}
     return cb.fixed_handler.fixed
@@ -134,6 +114,33 @@ function _pullback_sub!(out, M, v)
     isnothing(M) && return nothing
     @lencheck size(M, 1) v
     out .-= M' * v
+    return nothing
+end
+
+function unpack_dzl!(result, cb, cache::ForwardCache)
+    fill!(full(cache.dl_dp), zero(eltype(full(cache.dl_dp))))
+    cache.dl_dp.values_lr .= dual_lb(cache.kkt_rhs)
+    unpack_z!(result.dzl, cb, variable(cache.dl_dp))
+    return nothing
+end
+
+function unpack_dzu!(result, cb, cache::ForwardCache)
+    fill!(full(cache.du_dp), zero(eltype(full(cache.du_dp))))
+    cache.du_dp.values_ur .= dual_ub(cache.kkt_rhs)
+    unpack_z!(result.dzu, cb, variable(cache.du_dp))
+    return nothing
+end
+
+function adjoint_unpack_dzl!(result, cb, cache::ReverseCache)
+    fill!(full(cache.dzl_full), zero(eltype(full(cache.dzl_full))))
+    cache.dzl_full.values_lr .= dual_lb(cache.kkt_rhs)
+    pack_z!(variable(cache.dzl_full), cb, result.dzl)
+    return nothing
+end
+function adjoint_unpack_dzu!(result, cb, cache::ReverseCache)
+    fill!(full(cache.dzu_full), zero(eltype(full(cache.dzu_full))))
+    cache.dzu_full.values_ur .= dual_ub(cache.kkt_rhs)
+    pack_z!(variable(cache.dzu_full), cb, result.dzu)
     return nothing
 end
 
