@@ -41,8 +41,7 @@ function _unpack_vjp!(result::ReverseResult, sens::MadDiffSolver)
 
     unpack_x_fixed_zero!(result.dx, cb, primal(cache.kkt_rhs))
     unpack_y!(result.dλ, cb, dual(cache.kkt_rhs))
-    adjoint_unpack_dzl!(result, cb, cache)
-    adjoint_unpack_dzu!(result, cb, cache)
+    _unpack_z!(result, cb, cache)
 
     if !isnothing(sens.param_pullback)
         sens.param_pullback(result.grad_p, result.dx, result.dλ, result.dzl, result.dzu, sens)
@@ -71,7 +70,7 @@ function _pack_vjp!(
     cb = sens.solver.cb
 
     fill!(cache.dL_dx, zero(T))
-    # fill!(cache.dL_dλ, zero(T))  # pack_y! sets all elements
+    fill!(cache.dL_dλ, zero(T))
     fill!(cache.dL_dzl, zero(T))
     fill!(cache.dL_dzu, zero(T))
     fill!(full(cache.dzl_full), zero(T))
@@ -79,8 +78,14 @@ function _pack_vjp!(
 
     isnothing(dL_dx) || pack_x_obj!(cache.dL_dx, cb, dL_dx)
     isnothing(dL_dλ) || pack_y!(cache.dL_dλ, cb, dL_dλ)
-    isnothing(dL_dzl) || pack_dzl!(dL_dzl, cb, variable(cache.dzl_full))
-    isnothing(dL_dzu) || pack_dzu!(dL_dzu, cb, variable(cache.dzu_full))
+    if !isnothing(dL_dzl)
+        pack_z!(variable(cache.dzl_full), cb, dL_dzl)
+        cache.dL_dzl .= cache.dzl_full.values_lr
+    end
+    if !isnothing(dL_dzu)
+        pack_z!(variable(cache.dzu_full), cb, dL_dzu)
+        cache.dL_dzu .= cache.dzu_full.values_ur
+    end
     return nothing
 end
 
