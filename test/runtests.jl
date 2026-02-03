@@ -157,6 +157,8 @@ const DX_TOL = 1e-6
 const DY_TOL = 1e-3  # TODO: investigate
 # (name, opts, dx_tol, dy_tol, skip_equality)
 const KKT_CONFIGS = [
+    ("Reuse", Dict{Symbol, Any}(), DX_TOL, DY_TOL, false),
+    ("ReuseSkip", Dict{Symbol, Any}(:skip_kkt_refactorization => true), DX_TOL, DY_TOL, false),
     ("SparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseKKTSystem), DX_TOL, DY_TOL, false),
     ("SparseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseCondensedKKTSystem, :bound_relax_factor => 1e-6), 5e-4, 5e-3, true),  # /!\ reduced tolerances for condensed
     ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, DY_TOL, false),
