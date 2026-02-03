@@ -66,7 +66,7 @@ function _compute_nlp_vjp_objcons!(evaluator, ctx, grad_p, x_combined::AbstractV
     return
 end
 
-function _compute_param_pullback!(model, x::AbstractVector{T}, y, dx, dy, ctx::SensitivityContext) where {T}
+function _compute_param_pullback!(model, x::AbstractVector{T}, y, dx, dy, ctx::SensitivityContext, obj_scale) where {T}
     grad_p = ctx.grad_p
     fill!(grad_p, zero(T))
 
@@ -83,7 +83,7 @@ function _compute_param_pullback!(model, x::AbstractVector{T}, y, dx, dy, ctx::S
     end
     x_dense = @view x_combined[1:ctx.n_x]
 
-    _compute_qp_vjp_obj!(grad_p, model.qp_data.objective, ctx, dx, σ)
+    _compute_qp_vjp_obj!(grad_p, model.qp_data.objective, ctx, dx, σ * obj_scale)
     for (row, constraint) in enumerate(model.qp_data.constraints)
         _compute_qp_vjp_cons!(grad_p, constraint, ctx, x_dense, dy[row], dx, y[row])
     end
@@ -100,7 +100,7 @@ function _compute_param_pullback!(model, x::AbstractVector{T}, y, dx, dy, ctx::S
 
         μ = @view y[(ctx.n_qp + 1):(ctx.n_qp + ctx.n_nlp)]
         dμ = @view dy[(ctx.n_qp + 1):(ctx.n_qp + ctx.n_nlp)]
-        _compute_nlp_vjp_objcons!(ctx.nlp_evaluator, ctx, grad_p, x_combined, μ, dx, dμ, ctx.n_x, σ)
+        _compute_nlp_vjp_objcons!(ctx.nlp_evaluator, ctx, grad_p, x_combined, μ, dx, dμ, ctx.n_x, σ * obj_scale)
     end
 
     grad_p .*= -one(T)  # outer negation in vjp

@@ -79,7 +79,7 @@ function _make_param_pullback_closure()
         dx_cpu = dx
         dy_cpu = dy .* (obj_sign * obj_scale)
 
-        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dy_cpu, model.sensitivity_context)
+        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dy_cpu, model.sensitivity_context, obj_scale)
         copyto!(out, grad_p)
         return out
     end
