@@ -72,24 +72,12 @@ function _make_param_pullback_closure()
     return function(out, dx, dλ, dzl, dzu, sens)
         model = sens.ext
         x = model.inner.result.solution
-        n_con = length(dλ)
         solver = model.inner.solver
         obj_sign = solver.cb.obj_sign
-        VT = typeof(solver.y)
-        if VT <: Vector
-            y = _get_y_cache!(model, n_con)
-            MadNLP.unpack_y!(y, solver.cb, solver.y)
-            y .*= obj_sign
-            dx_cpu = dx
-            dλ_cpu = dλ .* obj_sign
-        else
-            y_gpu = similar(solver.y, n_con)
-            MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
-            y_gpu .*= obj_sign
-            y = Array(y_gpu)
-            dx_cpu = dx isa Vector ? dx : Array(dx)
-            dλ_cpu = (dλ isa Vector ? dλ : Array(dλ)) .* obj_sign
-        end
+        obj_scale = solver.cb.obj_scale[]
+        y = model.inner.result.multipliers .* (obj_sign * obj_scale)
+        dx_cpu = dx
+        dλ_cpu = dλ .* (obj_sign * obj_scale)
 
         grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dλ_cpu, model.sensitivity_context)
         copyto!(out, grad_p)

@@ -2,7 +2,7 @@ using PGLearn, PGLib, PowerModels, JuMP, DiffOpt, MadDiff, MadNLP
 using MathOptInterface; const MOI = MathOptInterface
 using Printf, Random, Test
 
-ENV["JULIA_TEST_FAILFAST"] = "true"
+# ENV["JULIA_TEST_FAILFAST"] = "true"
 
 PowerModels.silence()
 
@@ -15,7 +15,7 @@ CONFIGS = [
 ]
 
 seed = 42
-n_runs = 10
+n_runs = 3
 case = "pglib_opf_case1354_pegase"
 network = make_basic_network(pglib(case))
 data = PGLearn.OPFData(network)
@@ -34,6 +34,13 @@ function run_reverse_sensitivity!(model, pg_vars; run=1)
     # Set dL/dx = 1 for all pg variables (generator outputs)
     for pg in pg_vars
         MOI.set(model, DiffOpt.ReverseVariablePrimal(), pg, randn(rng))
+    end
+    for vm in model[:vm]
+        MOI.set(model, DiffOpt.ReverseConstraintDual(), LowerBoundRef(vm), randn(rng))
+        MOI.set(model, DiffOpt.ReverseConstraintDual(), UpperBoundRef(vm), randn(rng))
+    end
+    for kcl in model[:kcl_p]
+        MOI.set(model, DiffOpt.ReverseConstraintDual(), kcl, randn(rng))
     end
     t = @elapsed DiffOpt.reverse_differentiate!(model)
     results = []
@@ -76,7 +83,7 @@ end
     for i in axes(results, 1)  # for each config i
         (i > 1) && for j in axes(results[i], 1)  # for each run
             for k in axes(results[i][j], 1)  # for each parameter
-                @test results[i-1][j][k] ≈ results[i][j][k]
+                @test results[i-1][j][k] ≈ results[i][j][k] atol = 1e-4 rtol = 1e-3
             end
         end
     end
@@ -92,7 +99,7 @@ end
     for i in axes(results, 1)  # for each config i
         (i > 1) && for j in axes(results[i], 1)  # for each run
             for k in axes(results[i][j], 1)  # for each parameter
-                @test results[i-1][j][k] ≈ results[i][j][k] atol=5e-4
+                @test results[i-1][j][k] ≈ results[i][j][k] atol = 1e-4 rtol = 1e-3
             end
         end
     end

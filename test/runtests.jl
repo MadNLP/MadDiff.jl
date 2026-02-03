@@ -220,10 +220,18 @@ for prob_name in keys(PROBLEMS)
         (dx_mad, dλ_mad, dzl_mad, dzu_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
         (dx_diff, dλ_diff, dzl_diff, dzu_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
 
-        @test all(isapprox.(dx_mad, dx_diff; atol=dx_atol, rtol))
-        @test all(isapprox.(dλ_mad, dλ_diff; atol=dλ_atol, rtol))
-        @test all(isapprox.(dzl_mad, dzl_diff; atol=dλ_atol, rtol))
-        @test all(isapprox.(dzu_mad, dzu_diff; atol=dλ_atol, rtol))
+        for (g1, g2) in zip(dx_mad, dx_diff)
+            @test isapprox(g1, g2; atol=dx_atol, rtol)
+        end
+        for (g1, g2) in zip(dλ_mad, dλ_diff)
+            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+        end
+        for (g1, g2) in zip(dzl_mad, dzl_diff)
+            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+        end
+        for (g1, g2) in zip(dzu_mad, dzu_diff)
+            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+        end
         end
     end
 
@@ -237,7 +245,9 @@ for prob_name in keys(PROBLEMS)
 
         grad_mad = run_maddiff_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu, opts...)
         grad_diff = run_diffopt_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu, opts...)
-        @test all(isapprox.(grad_mad, grad_diff; atol=dλ_atol, rtol))
+        for (g1, g2) in zip(grad_mad, grad_diff)
+            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+        end
     end
 end
 end
