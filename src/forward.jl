@@ -111,7 +111,7 @@ function _solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache
     iterator = if sens.kkt === solver.kkt
         solver.iterator
     else
-        MadNLP.RichardsonIterator(
+        RichardsonIterator(
             sens.kkt;
             opt=solver.iterator.opt,
             logger=solver.iterator.logger,
@@ -119,10 +119,10 @@ function _solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache
         )
     end
     solver.cnt.linear_solver_time += @elapsed begin
-        if MadNLP.solve_refine!(d, iterator, w, work)
+        if solve_refine!(d, iterator, w, work)
             # ok
-        elseif MadNLP.improve!(sens.kkt.linear_solver)
-            MadNLP.solve_refine!(d, iterator, w, work)
+        elseif improve!(sens.kkt.linear_solver)
+            solve_refine!(d, iterator, w, work)
         end
     end
     copyto!(full(w), full(d))
