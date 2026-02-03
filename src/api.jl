@@ -28,13 +28,12 @@ mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
     Solver <: AbstractMadNLPSolver{T},
-    VF, VB, FC, RC, F, E
+    VB, FC, RC, F, E
 }
     solver::Solver
     config::MadDiffConfig
     kkt::KKT
     n_p::Int
-    fixed_idx::VF
     is_eq::VB
     forward_cache::Union{Nothing, FC}
     reverse_cache::Union{Nothing, RC}
@@ -56,14 +55,12 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     n_con = NLPModels.get_ncon(solver.nlp)
     is_eq = fill!(similar(x_array, Bool, n_con), false)
     is_eq[solver.cb.ind_eq] .= true
-    fixed_idx = _get_fixed_idx(cb, cb.ind_lb)
 
     kkt = get_sensitivity_kkt(solver, config)
 
     KKT = typeof(kkt)
     Solver = typeof(solver)
     VI = typeof(cb.ind_lb)
-    VF = typeof(fixed_idx)
     VB = typeof(is_eq)
     VT = typeof(x_array)
     VK = UnreducedKKTVector{T,VT,VI}
@@ -72,8 +69,8 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     RC = ReverseCache{VT, VK, PV}
     F = typeof(param_pullback)
     E = typeof(extension)
-    return MadDiffSolver{T, KKT, Solver, VF, VB, FC, RC, F, E}(
-        solver, config, kkt, n_p, fixed_idx, is_eq,
+    return MadDiffSolver{T, KKT, Solver, VB, FC, RC, F, E}(
+        solver, config, kkt, n_p, is_eq,
         nothing, nothing,
         param_pullback,
         extension,
@@ -127,10 +124,11 @@ end
 function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dlvar_dp=nothing, duvar_dp=nothing)
     return function(out, dx, dy, dzl, dzu, sens)
         fill!(out, zero(eltype(out)))
-        _pullback_sub!(out, d2L_dxdp, dx)
-        _pullback_sub!(out, dg_dp, dy)
+        _pullback_sub!(out, d2L_dxdp, dx)  # FIXME: it needs to compute d2L_dxdp at y * obj_scale...
         dy_scaled = sens.reverse_cache.dy_scaled
-        dy_scaled .= dy .* sens.reverse_cache.eq_scale
+        dy_scaled .= dy .* sens.solver.cb.obj_scale[]
+        _pullback_sub!(out, dg_dp, dy_scaled)
+        dy_scaled .*= sens.reverse_cache.eq_scale
         _pullback_add!(out, dlcon_dp, dy_scaled)
         _pullback_add!(out, ducon_dp, dy_scaled)
         _pullback_sub!(out, dlvar_dp, dzl)

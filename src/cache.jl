@@ -4,10 +4,6 @@ struct ForwardCache{VT, VK, PV}
     kkt_rhs::VK
     kkt_sol::VK
     kkt_work::VK
-    dx_reduced::VT
-    dy_reduced::VT
-    dzl_reduced::VT
-    dzu_reduced::VT
     d2L_dxdp::VT
     dg_dp::VT
     dlvar_dp::PV
@@ -30,10 +26,6 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
             zeros_like(cb, T, cb.nvar),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, length(cb.ind_lb)),
-            zeros_like(cb, T, length(cb.ind_ub)),
-            zeros_like(cb, T, n_x),
             zeros_like(cb, T, n_con),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
@@ -67,10 +59,6 @@ struct ReverseCache{VT, VK, PV}
     kkt_rhs::VK
     kkt_sol::VK
     kkt_work::VK
-    dx_reduced::VT
-    dy_reduced::VT
-    dzl_reduced::VT
-    dzu_reduced::VT
     dzl_full::PV
     dzu_full::PV
     dL_dx::VT
@@ -93,10 +81,6 @@ function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
-            zeros_like(cb, T, cb.nvar),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, length(cb.ind_lb)),
-            zeros_like(cb, T, length(cb.ind_ub)),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             zeros_like(cb, T, cb.nvar),

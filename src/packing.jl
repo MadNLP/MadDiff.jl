@@ -54,9 +54,9 @@ function pack_dzu!(dz, cb, dz_full, pv)
     dz .= pv.values_ur
 end
 
-set_fixed_sensitivity!(dx, dlvar_dp, duvar_dp, ::Nothing) = nothing
-function set_fixed_sensitivity!(dx, dlvar_dp, duvar_dp, fixed_idx)
-    isempty(fixed_idx) && return nothing
+set_fixed_sensitivity!(dx, cb::AbstractCallback, dlvar_dp, duvar_dp) = nothing
+function set_fixed_sensitivity!(dx, cb::SparseCallback{T, VT, VI, NLP, FH}, dlvar_dp, duvar_dp) where {T, VT, VI, NLP, FH<:MakeParameter}
+    fixed_idx = cb.fixed_handler.fixed
     if isnothing(dlvar_dp) && isnothing(duvar_dp)
         return nothing
     elseif isnothing(duvar_dp)

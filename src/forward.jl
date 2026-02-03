@@ -40,12 +40,12 @@ function pack_jvp!(
 
     fill!(full(cache.dlvar_dp), zero(T))
     fill!(full(cache.duvar_dp), zero(T))
-    fill!(cache.dx_reduced, zero(T))
+    fill!(cache.d2L_dxdp, zero(T))
     fill!(cache.dg_dp, zero(T))
     fill!(cache.dlcon_dp, zero(T))
     fill!(cache.ducon_dp, zero(T))
 
-    !isnothing(d2L_dxdp) && pack_hess(cache.dx_reduced, cb, d2L_dxdp)
+    !isnothing(d2L_dxdp) && pack_hess(cache.d2L_dxdp, cb, d2L_dxdp)
     !isnothing(dg_dp) && pack_cons!(cache.dg_dp, cb, dg_dp)
     !isnothing(dlcon_dp) && pack_cons!(cache.dlcon_dp, cb, dlcon_dp)
     !isnothing(ducon_dp) && pack_cons!(cache.ducon_dp, cb, ducon_dp)
@@ -71,10 +71,10 @@ function solve_jvp!(sens::MadDiffSolver{T}) where {T}
     cache = get_forward_cache!(sens)
     kkt = sens.kkt
     w = cache.kkt_rhs
-    n_x = length(cache.dx_reduced)
+    n_x = length(cache.d2L_dxdp)
 
     fill!(full(w), zero(T))
-    primal(w)[1:n_x] .= .-cache.dx_reduced
+    primal(w)[1:n_x] .= .-cache.d2L_dxdp
     dual(w) .= .-cache.dg_dp .+ sens.is_eq .* (cache.dlcon_dp .+ cache.ducon_dp) ./ 2
     jvp_set_bound_rhs!(kkt, w, cache.dlvar_dp, cache.duvar_dp)
 
@@ -87,7 +87,7 @@ function unpack_jvp!(result::ForwardResult, sens::MadDiffSolver; dlvar_dp=nothin
     cb = sens.solver.cb
 
     unpack_dx!(result.dx, cb, primal(cache.kkt_rhs))
-    set_fixed_sensitivity!(result.dx, dlvar_dp, duvar_dp, sens.fixed_idx)
+    set_fixed_sensitivity!(result.dx, cb, dlvar_dp, duvar_dp)
     unpack_y!(result.dy, cb, dual(cache.kkt_rhs))
     unpack_dzl!(result.dzl, cb, dual_lb(cache.kkt_rhs), cache.dlvar_dp)
     unpack_dzu!(result.dzu, cb, dual_ub(cache.kkt_rhs), cache.duvar_dp)
