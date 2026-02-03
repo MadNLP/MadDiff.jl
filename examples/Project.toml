@@ -16,8 +16,10 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [sources]
-DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
 MadDiff = {path = ".."}
 MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
 MadNLPGPU = {rev = "master", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
 PGLearn = {rev = "mk/acp_param", url = "https://github.com/AI4OPT/PGLearn.jl"}
+
+[compat]
+DiffOpt = "0.5.5"

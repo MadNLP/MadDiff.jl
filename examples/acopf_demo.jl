@@ -27,7 +27,9 @@ function build_and_solve(data, optimizer)
     optimize!(model)
     return model
 end
-
+function Loss(model, seeds_pg)
+    return dot(seeds_pg, value.(model[:pg]))
+end
 function Loss(model, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     N = length(model[:vm])
     L = 0.0
@@ -45,20 +47,20 @@ function finite_diff_grad_k(data, optimizer, k; seed = 42, ε = 1e-6)
     rng = Xoshiro(seed)
     N, G, E = data.N, data.G, data.E
     seeds_pg = [randn(rng) for _ in 1:G]
-    seeds_pf = [randn(rng) for _ in 1:E]
-    seeds_vm_lb = [randn(rng) for _ in 1:N]
-    seeds_vm_ub = [randn(rng) for _ in 1:N]
-    seeds_kcl = [randn(rng) for _ in 1:N]
+    # seeds_pf = [randn(rng) for _ in 1:E]
+    # seeds_vm_lb = [randn(rng) for _ in 1:N]
+    # seeds_vm_ub = [randn(rng) for _ in 1:N]
+    # seeds_kcl = [randn(rng) for _ in 1:N]
     data_plus = deepcopy(data)
     data_plus.pd = copy(data.pd)
     data_plus.pd[k] += ε
     model_plus = build_and_solve(data_plus, optimizer)
-    L_plus = Loss(model_plus, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
+    L_plus = Loss(model_plus, seeds_pg)#, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     data_minus = deepcopy(data)
     data_minus.pd = copy(data.pd)
     data_minus.pd[k] -= ε
     model_minus = build_and_solve(data_minus, optimizer)
-    L_minus = Loss(model_minus, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
+    L_minus = Loss(model_minus, seeds_pg)#, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     return (L_plus - L_minus) / (2 * ε)
 end
 
@@ -68,18 +70,18 @@ function run_reverse_sensitivity!(model, pg_vars; run=1)
     for pg in pg_vars
         MOI.set(model, DiffOpt.ReverseVariablePrimal(), pg, randn(rng))
     end
-    for pf in model[:pf]
-        MOI.set(model, DiffOpt.ReverseVariablePrimal(), pf, randn(rng))
-    end
-    for vm in model[:vm]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), LowerBoundRef(vm), randn(rng))
-    end
-    for vm in model[:vm]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), UpperBoundRef(vm), randn(rng))
-    end
-    for kcl in model[:kcl_q]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), kcl, randn(rng))
-    end
+    # for pf in model[:pf]
+    #     MOI.set(model, DiffOpt.ReverseVariablePrimal(), pf, randn(rng))
+    # end
+    # for vm in model[:vm]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), LowerBoundRef(vm), randn(rng))
+    # end
+    # for vm in model[:vm]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), UpperBoundRef(vm), randn(rng))
+    # end
+    # for kcl in model[:kcl_q]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), kcl, randn(rng))
+    # end
     t = @elapsed DiffOpt.reverse_differentiate!(model)
     results = []
     for pd in model[:pd]
