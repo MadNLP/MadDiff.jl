@@ -37,13 +37,10 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     if VT <: Vector
         y = _get_y_cache!(model, n_con)
         MadNLP.unpack_y!(y, solver.cb, solver.y)
-        # Convert y from MOI convention back to internal convention.
-        # unpack_y! applies obj_sign, so we undo it for the param_jvp formula.
         y .*= obj_sign
     else
         y_gpu = similar(solver.y, n_con)
         MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
-        # Convert from MOI to internal convention
         y_gpu .*= obj_sign
         y = Array(y_gpu)
     end
@@ -55,26 +52,23 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     if VT <: Vector
         result = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
         dx_cpu = result.dx
-        dλ_cpu = result.dλ
+        dy_cpu = result.dy
     else
         d2L_dxdp_gpu = d2L_dxdp isa VT ? d2L_dxdp : VT(d2L_dxdp)
         dg_dp_gpu = dg_dp isa VT ? dg_dp : VT(dg_dp)
         result = MadDiff.forward_differentiate!(sens; d2L_dxdp=d2L_dxdp_gpu, dg_dp=dg_dp_gpu)
         dx_cpu = result.dx isa Vector ? result.dx : Array(result.dx)
-        dλ_cpu = result.dλ isa Vector ? result.dλ : Array(result.dλ)
+        dy_cpu = result.dy isa Vector ? result.dy : Array(result.dy)
     end
 
     for (i, vi) in enumerate(ctx.primal_vars)
         model.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
-    dλ = _get_dλ_cache!(model, n_con)
-    # Convert dλ from internal convention to MOI convention.
-    # unpack_y! in forward.jl already applies obj_sign, so we apply -obj_sign
-    # to handle the baseline convention difference (MOI and MadNLP opposite signs).
-    dλ .= (.-obj_sign) .* dλ_cpu
+    dy = _get_dy_cache!(model, n_con)
+    dy .= (.-obj_sign) .* dy_cpu
 
-    _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dλ)
+    _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dy)
     _store_bound_dual_sensitivities!(model, sens, result, ctx)
     return
 end
@@ -87,13 +81,13 @@ function _constraint_row(inner, ci::MOI.ConstraintIndex{F, S}) where {F, S}
     end
 end
 
-function _store_dual_sensitivities!(dual_sensitivities, inner, dλ)
+function _store_dual_sensitivities!(dual_sensitivities, inner, dy)
     for (F, S) in MOI.get(inner, MOI.ListOfConstraintTypesPresent())
         F == MOI.VariableIndex && continue
         S <: MOI.Parameter && continue
         for ci in MOI.get(inner, MOI.ListOfConstraintIndices{F, S}())
             row = _constraint_row(inner, ci)
-            dual_sensitivities[ci] = dλ[row]
+            dual_sensitivities[ci] = dy[row]
         end
     end
     if inner.nlp_model !== nothing
@@ -102,7 +96,7 @@ function _store_dual_sensitivities!(dual_sensitivities, inner, dλ)
             S = typeof(con.set)
             ci = MOI.ConstraintIndex{MOI.ScalarNonlinearFunction, S}(nlp_idx.value)
             row = n_qp + nlp_idx.value
-            dual_sensitivities[ci] = dλ[row]
+            dual_sensitivities[ci] = dy[row]
         end
     end
     return

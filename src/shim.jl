@@ -14,8 +14,3 @@ function Base.setproperty!(s:: _SensitivitySolverShim, name::Symbol, value)
     name === :kkt && return setfield!(s, :kkt, value)
     return setproperty!(getfield(s, :inner), name, value)
 end
-
-function Base.propertynames(s:: _SensitivitySolverShim; private::Bool=false)
-    inner_names = fieldnames(typeof(getfield(s, :inner)))
-    return private ? (:inner, :kkt, inner_names...) : (:kkt, inner_names...)
-end

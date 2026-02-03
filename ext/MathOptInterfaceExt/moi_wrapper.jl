@@ -37,8 +37,6 @@ function MOI.get(m::Optimizer, attr::MOI.RawOptimizerAttribute)
         return m.sensitivity_config.linear_solver
     elseif name == MadDiff.MADDIFF_LINEARSOLVER_OPTIONS
         return m.sensitivity_config.linear_solver_options
-    elseif name == MadDiff.MADDIFF_REGULARIZATION
-        return m.sensitivity_config.regularization
     elseif name == MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION
         return m.sensitivity_config.skip_kkt_refactorization
     else
@@ -56,8 +54,6 @@ function MOI.set(m::Optimizer, attr::MOI.RawOptimizerAttribute, value)
         m.sensitivity_config.linear_solver = value
     elseif name == MadDiff.MADDIFF_LINEARSOLVER_OPTIONS
         m.sensitivity_config.linear_solver_options = value
-    elseif name == MadDiff.MADDIFF_REGULARIZATION
-        m.sensitivity_config.regularization = value
     elseif name == MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION
         m.sensitivity_config.skip_kkt_refactorization = value
     else
@@ -75,7 +71,6 @@ function MOI.supports(m::Optimizer, attr::MOI.RawOptimizerAttribute)
         MadDiff.MADDIFF_KKTSYSTEM_OPTIONS,
         MadDiff.MADDIFF_LINEARSOLVER,
         MadDiff.MADDIFF_LINEARSOLVER_OPTIONS,
-        MadDiff.MADDIFF_REGULARIZATION,
         MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION,
     ) || MOI.supports(m.inner, attr)
 end
@@ -155,8 +150,8 @@ function _resize_and_zero!(cache::Vector{T}, n::Int) where {T}
 end
 
 _get_y_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.y_cache, n)
-_get_dλ_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dλ_cache, n)
+_get_dy_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dy_cache, n)
 _get_dL_dx!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dx, n)
-_get_dL_dλ!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dλ, n)
+_get_dL_dy!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dy, n)
 _get_dL_dzl!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzl, n)
 _get_dL_dzu!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dzu, n)

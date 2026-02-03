@@ -30,9 +30,9 @@ ReverseModeData{T}() where {T} = ReverseModeData{T}(
 
 mutable struct WorkBuffers{T}
     y_cache::Vector{T}
-    dλ_cache::Vector{T}
+    dy_cache::Vector{T}
     dL_dx::Vector{T}
-    dL_dλ::Vector{T}
+    dL_dy::Vector{T}
     dL_dzl::Vector{T}
     dL_dzu::Vector{T}
 end

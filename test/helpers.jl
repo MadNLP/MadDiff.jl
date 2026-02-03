@@ -45,10 +45,10 @@ function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
     DiffOpt.forward_differentiate!(model)
 
     dx = [MOI.get(model, DiffOpt.ForwardVariablePrimal(), v) for v in vars]
-    dλ = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
+    dy = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
     dzl = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in lb_cons]
     dzu = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in ub_cons]
-    return dx, dλ, dzl, dzu
+    return dx, dy, dzl, dzu
 end
 
 function _wrap_optimizer(optimizer, mad_opts)
@@ -71,21 +71,21 @@ function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer=MadNLP.Opti
     DiffOpt.forward_differentiate!(model)
 
     dx = [MOI.get(model, DiffOpt.ForwardVariablePrimal(), v) for v in vars]
-    dλ = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
+    dy = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
     dzl = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in lb_cons]
     dzu = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in ub_cons]
-    return dx, dλ, dzl, dzu
+    return dx, dy, dzl, dzu
 end
 
-function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
     if !isnothing(dL_dx)
         for (i, v) in enumerate(vars)
             MOI.set(model, DiffOpt.ReverseVariablePrimal(), v, dL_dx[i])
         end
     end
-    if !isnothing(dL_dλ)
+    if !isnothing(dL_dy)
         for (i, c) in enumerate(cons)
-            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dλ[i])
+            MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dy[i])
         end
     end
     if !isnothing(dL_dzl)
@@ -101,9 +101,9 @@ function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ,
     return nothing
 end
 
-function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    all(isnothing, (dL_dx, dL_dλ, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dλ, dL_dzl, dL_dzu must be provided"))
+function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
     if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
         # FIXME: we need to make sure linear_solver is passed to madnlp here
         mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
@@ -122,7 +122,7 @@ function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
 
     DiffOpt.empty_input_sensitivities!(model)
 
-    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
 
     DiffOpt.reverse_differentiate!(model)
 
@@ -130,9 +130,9 @@ function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
     return [MOI.get(model, DiffOpt.ReverseConstraintSet(), ParameterRef(p)).value for p in params_list]
 end
 
-function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    all(isnothing, (dL_dx, dL_dλ, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dλ, dL_dzl, dL_dzu must be provided"))
+function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
     model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
     set_silent(model)
@@ -144,7 +144,7 @@ function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dλ=nothing, dL_dzl=
 
     DiffOpt.empty_input_sensitivities!(model)
 
-    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
 
     DiffOpt.reverse_differentiate!(model)
 

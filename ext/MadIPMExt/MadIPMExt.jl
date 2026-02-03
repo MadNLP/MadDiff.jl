@@ -4,7 +4,7 @@ using LinearAlgebra: mul!
 import MadDiff
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve!
 import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
-import MadDiff: MadDiffSolver, _refactorize_kkt_for_sensitivity!, _SensitivitySolverShim, _solve_with_refine!, _adjoint_solve_with_refine!, adjoint_solve!, adjoint_mul!, _adjoint_kktmul!
+import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim, _solve_with_refine!, _adjoint_solve_with_refine!, adjoint_solve!, adjoint_mul!, _adjoint_kktmul!
 
 function _adjoint_finish_bounds!(kkt::NormalKKTSystem, w::AbstractKKTVector)
     dlb = dual_lb(w)
@@ -69,7 +69,7 @@ function adjoint_mul!(
     return w
 end
 
-function _refactorize_kkt_for_sensitivity!(kkt, solver::MPCSolver)
+function refactorize_kkt!(kkt, solver::MPCSolver)
     _solver = (kkt === solver.kkt) ? solver : _SensitivitySolverShim(solver, kkt)
     factorize_regularized_system!(_solver)
     return nothing

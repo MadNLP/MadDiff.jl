@@ -154,16 +154,16 @@ end
 include("problems.jl")
 
 const DX_TOL = 1e-6
-const Dλ_TOL = 1e-3  # TODO: investigate
-# (name, opts, dx_tol, dλ_tol, skip_equality)
+const DY_TOL = 1e-3  # TODO: investigate
+# (name, opts, dx_tol, dy_tol, skip_equality)
 const KKT_CONFIGS = [
-    ("SparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseKKTSystem), DX_TOL, Dλ_TOL, false),
+    ("SparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseKKTSystem), DX_TOL, DY_TOL, false),
     ("SparseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseCondensedKKTSystem, :bound_relax_factor => 1e-6), 5e-4, 5e-3, true),  # /!\ reduced tolerances for condensed
-    ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, Dλ_TOL, false),
-    ("ScaledSparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.ScaledSparseKKTSystem), DX_TOL, Dλ_TOL, false),
-    ("DenseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
-    ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
-    ("NormalKKT", Dict{Symbol, Any}(:kkt_system => MadIPM.NormalKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, Dλ_TOL, false),
+    ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, DY_TOL, false),
+    ("ScaledSparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.ScaledSparseKKTSystem), DX_TOL, DY_TOL, false),
+    ("DenseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
+    ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
+    ("NormalKKT", Dict{Symbol, Any}(:kkt_system => MadIPM.NormalKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
     # TODO: implement MadNCL.Optimizer so we can test K1s and K2r here
     ("HybridCondensedKKT", Dict{Symbol, Any}(:kkt_system => HybridKKT.HybridCondensedKKTSystem), 5e-4, 5e-3, false),  # /!\ reduced tolerances for condensed
 ]
@@ -185,7 +185,7 @@ const SKIP_PROBLEMS = Set([
     "nlp_trig",  # TODO: investigate (condensed)
 ])
 
-for (kkt_name, kkt_opts, dx_tol, dλ_tol, skip_equality) in KKT_CONFIGS
+for (kkt_name, kkt_opts, dx_tol, dy_tol, skip_equality) in KKT_CONFIGS
 for (fv_name, fv_handler) in FV_CONFIGS
 @testset "$kkt_name × $fv_name" begin
 Random.seed!(42)
@@ -201,7 +201,7 @@ for prob_name in keys(PROBLEMS)
 
     # tolerance adjustments for misbehaving cases
     dx_atol = prob_name == "small_coef" ? 0.0 : dx_tol  # use rtol for small_coef
-    dλ_atol = prob_name == "small_coef" ? 0.0 : dλ_tol
+    dy_atol = prob_name == "small_coef" ? 0.0 : dy_tol
     rtol = prob_name == "small_coef" ? 1e-4 : 0.0
 
     @testset "$prob_name" begin
@@ -217,20 +217,20 @@ for prob_name in keys(PROBLEMS)
         rng = MersenneTwister(hash((kkt_name, fv_name, prob_name)))
         for pidx in 1:n_params
         dp = randn(rng)
-        (dx_mad, dλ_mad, dzl_mad, dzu_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
-        (dx_diff, dλ_diff, dzl_diff, dzu_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
+        (dx_mad, dy_mad, dzl_mad, dzu_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
+        (dx_diff, dy_diff, dzl_diff, dzu_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
 
         for (g1, g2) in zip(dx_mad, dx_diff)
             @test isapprox(g1, g2; atol=dx_atol, rtol)
         end
-        for (g1, g2) in zip(dλ_mad, dλ_diff)
-            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+        for (g1, g2) in zip(dy_mad, dy_diff)
+            @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
         for (g1, g2) in zip(dzl_mad, dzl_diff)
-            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+            @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
         for (g1, g2) in zip(dzu_mad, dzu_diff)
-            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+            @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
         end
     end
@@ -239,14 +239,14 @@ for prob_name in keys(PROBLEMS)
     @testset "Reverse $prob_name" begin
         rng = MersenneTwister(hash((kkt_name, fv_name, prob_name)))
         dL_dx = randn(rng, n_x)
-        dL_dλ = randn(rng, n_con)
+        dL_dy = randn(rng, n_con)
         dL_dzl = randn(rng, n_lb)
         dL_dzu = randn(rng, n_ub)
 
-        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu, opts...)
-        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dλ, dL_dzl, dL_dzu, opts...)
+        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, opts...)
+        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, opts...)
         for (g1, g2) in zip(grad_mad, grad_diff)
-            @test isapprox(g1, g2; atol=dλ_atol, rtol)
+            @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
     end
 end

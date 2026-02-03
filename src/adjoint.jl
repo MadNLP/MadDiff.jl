@@ -366,7 +366,7 @@ end
 # Forward solve (with bound elimination):
 #   r̂ₚ = rₚ - Dₗ⁻¹ rₗ - Dᵤ⁻¹ rᵤ
 #   K_red x = r̂
-#   λₗ = Dₗ⁻¹(-rₗ + L xₗ),  λᵤ = Dᵤ⁻¹(rᵤ - U xᵤ)
+#   yₗ = Dₗ⁻¹(-rₗ + L xₗ),  yᵤ = Dᵤ⁻¹(rᵤ - U xᵤ)
 # with Dₗ = diag(l_diag), Dᵤ = diag(u_diag), L = diag(l_lower), U = diag(u_lower).
 #
 # Adjoint (reverse) updates:

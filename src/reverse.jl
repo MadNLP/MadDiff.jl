@@ -1,103 +1,59 @@
-struct ReverseResult{VT, GT}
-    dx::VT
-    dλ::VT
-    dzl::VT
-    dzu::VT
-    grad_p::GT
-end
-
-
-function ReverseResult(sens::MadDiffSolver{T}) where {T}
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
-    n_con = NLPModels.get_ncon(sens.solver.nlp)
-    cb = sens.solver.cb
-    grad_p = sens.n_p > 0 ? _zeros_like(cb, T, sens.n_p) : nothing
-    return ReverseResult(
-        _zeros_like(cb, T, n_x),
-        _zeros_like(cb, T, n_con),
-        _zeros_like(cb, T, n_x),
-        _zeros_like(cb, T, n_x),
-        grad_p,
-    )
-end
-
 function reverse_differentiate!(
     result::ReverseResult,
     sens::MadDiffSolver;
     dL_dx = nothing,
-    dL_dλ = nothing,
+    dL_dy = nothing,
     dL_dzl = nothing,
     dL_dzu = nothing,
 )
-    _pack_vjp!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
-    _solve_vjp!(sens)
-    _unpack_vjp!(result, sens)
+    pack_vjp!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
+    solve_vjp!(sens)
+    unpack_vjp!(result, sens)
     return result
 end
 
-function _unpack_vjp!(result::ReverseResult, sens::MadDiffSolver)
-    cache = _get_reverse_cache!(sens)
-    cb = sens.solver.cb
-
-    unpack_x_fixed_zero!(result.dx, cb, primal(cache.kkt_rhs))
-    unpack_y!(result.dλ, cb, dual(cache.kkt_rhs))
-    _unpack_z!(result, cb, cache)
-
-    if !isnothing(sens.param_pullback)
-        sens.param_pullback(result.grad_p, result.dx, result.dλ, result.dzl, result.dzu, sens)
-    end
-    return result
-end
-
-function _pack_vjp!(
+function pack_vjp!(
     sens::MadDiffSolver{T};
     dL_dx = nothing,
-    dL_dλ = nothing,
+    dL_dy = nothing,
     dL_dzl = nothing,
     dL_dzu = nothing,
 ) where {T}
-    all(isnothing, (dL_dx, dL_dλ, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dλ, dL_dzl, dL_dzu must be provided"))
+    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
 
     n_x = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(sens.solver.nlp)
     isnothing(dL_dx) || @lencheck n_x dL_dx
-    isnothing(dL_dλ) || @lencheck n_con dL_dλ
+    isnothing(dL_dy) || @lencheck n_con dL_dy
     isnothing(dL_dzl) || @lencheck n_x dL_dzl
     isnothing(dL_dzu) || @lencheck n_x dL_dzu
 
-    cache = _get_reverse_cache!(sens)
+    cache = get_reverse_cache!(sens)
     cb = sens.solver.cb
 
     fill!(cache.dL_dx, zero(T))
-    fill!(cache.dL_dλ, zero(T))
+    fill!(cache.dL_dy, zero(T))
     fill!(cache.dL_dzl, zero(T))
     fill!(cache.dL_dzu, zero(T))
     fill!(full(cache.dzl_full), zero(T))
     fill!(full(cache.dzu_full), zero(T))
 
-    isnothing(dL_dx) || pack_x!(cache.dL_dx, cb, dL_dx)
-    isnothing(dL_dλ) || pack_y!(cache.dL_dλ, cb, dL_dλ)
-    if !isnothing(dL_dzl)
-        pack_z!(variable(cache.dzl_full), cb, dL_dzl)
-        cache.dL_dzl .= cache.dzl_full.values_lr
-    end
-    if !isnothing(dL_dzu)
-        pack_z!(variable(cache.dzu_full), cb, dL_dzu)
-        cache.dL_dzu .= cache.dzu_full.values_ur
-    end
+    isnothing(dL_dx) || pack_dx!(cache.dL_dx, cb, dL_dx)
+    isnothing(dL_dy) || pack_dy!(cache.dL_dy, cb, dL_dy)
+    isnothing(dL_dzl) || pack_dzl!(cache.dL_dzl, cb, dL_dzl, cache.dzl_full)
+    isnothing(dL_dzu) || pack_dzu!(cache.dL_dzu, cb, dL_dzu, cache.dzu_full)
     return nothing
 end
 
-function _solve_vjp!(sens::MadDiffSolver{T}) where {T}
-    cache = _get_reverse_cache!(sens)
-    kkt = sens.kkt
+function solve_vjp!(sens::MadDiffSolver{T}) where {T}
+    cache = get_reverse_cache!(sens)
     w = cache.kkt_rhs
     n_x = length(cache.dL_dx)
 
     fill!(full(w), zero(T))
     primal(w)[1:n_x] .= cache.dL_dx
-    dual(w) .= cache.dL_dλ
+    dual(w) .= cache.dL_dy
     dual_lb(w) .= cache.dL_dzl
     dual_ub(w) .= cache.dL_dzu
 
@@ -105,29 +61,17 @@ function _solve_vjp!(sens::MadDiffSolver{T}) where {T}
     return nothing
 end
 
-function _adjoint_solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
-    d = cache.kkt_sol
-    work = cache.kkt_work
+function unpack_vjp!(result::ReverseResult, sens::MadDiffSolver)
+    cache = get_reverse_cache!(sens)
+    cb = sens.solver.cb
 
-    copyto!(full(d), full(w))
-    solver = sens.solver
-    iterator = if sens.kkt === solver.kkt
-        solver.iterator
-    else
-        RichardsonIterator(
-            sens.kkt;
-            opt=solver.iterator.opt,
-            logger=solver.iterator.logger,
-            cnt=solver.cnt,
-        )
+    unpack_dx!(result.dx, cb, primal(cache.kkt_rhs))
+    unpack_y!(result.dy, cb, dual(cache.kkt_rhs))
+    unpack_dzl!(result.dzl, cb, dual_lb(cache.kkt_rhs), cache.dzl_full)
+    unpack_dzu!(result.dzu, cb, dual_ub(cache.kkt_rhs), cache.dzu_full)
+
+    if !isnothing(sens.param_pullback)
+        sens.param_pullback(result.grad_p, result.dx, result.dy, result.dzl, result.dzu, sens)
     end
-    solver.cnt.linear_solver_time += @elapsed begin
-        if adjoint_solve_refine!(d, iterator, w, work)
-            # ok
-        elseif improve!(sens.kkt.linear_solver)
-            adjoint_solve_refine!(d, iterator, w, work)
-        end
-    end
-    copyto!(full(w), full(d))
-    return nothing
+    return result
 end

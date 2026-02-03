@@ -45,7 +45,7 @@ else
 
             # Verify results are CuArrays
             @test result.dx isa CuArray
-            @test result.dλ isa CuArray
+            @test result.dy isa CuArray
             @test result.dzl isa CuArray
             @test result.dzu isa CuArray
 
@@ -69,15 +69,15 @@ else
 
             # Verify results are CuArrays
             @test result.dx isa CuArray
-            @test result.dλ isa CuArray
+            @test result.dy isa CuArray
             @test result.dzl isa CuArray
             @test result.dzu isa CuArray
 
             dx = Vector(result.dx)
-            dλ = Vector(result.dλ)  # equality constraint dual adjoint
+            dy = Vector(result.dy)  # equality constraint dual adjoint
 
             @test isapprox(dx, [0.0, 0.0]; atol = 1.0e-4)
-            @test isapprox(dλ, [1.0]; atol = 1.0e-4)
+            @test isapprox(dy, [1.0]; atol = 1.0e-4)
         end
 
         @testset "Forward-Reverse" begin
@@ -102,9 +102,9 @@ else
             dloss_dp_fwd = dot([1.0, 1.0], dx_dp)
 
             dx = Vector(rev.dx)
-            dλ = Vector(rev.dλ)  # equality constraint dual adjoint
-            # dL/dp = -(dx · d2L_dxdp + dλ · dg_dp) relates forward and reverse sensitivities
-            dloss_dp_rev = -(dot(dx, [0.0, 0.0]) + dot(dλ, [-1.0]))
+            dy = Vector(rev.dy)  # equality constraint dual adjoint
+            # dL/dp = -(dx · d2L_dxdp + dy · dg_dp) relates forward and reverse sensitivities
+            dloss_dp_rev = -(dot(dx, [0.0, 0.0]) + dot(dy, [-1.0]))
 
             @test isapprox(dloss_dp_fwd, dloss_dp_rev; atol = 1.0e-6)
         end

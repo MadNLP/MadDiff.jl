@@ -12,6 +12,13 @@ Base.@kwdef mutable struct MadDiffConfig
     skip_kkt_refactorization::Bool = false
 end
 
+function _needs_new_kkt(config)
+    return !isnothing(config.kkt_system) ||
+        !isnothing(config.kkt_options) ||
+        !isnothing(config.linear_solver) ||
+        !isnothing(config.linear_solver_options)
+end
+
 """
     MadDiffSolver(solver::AbstractMadNLPSolver; config=MadDiffConfig(), param_pullback=nothing, n_p=0)
 
@@ -51,7 +58,7 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     is_eq[solver.cb.ind_eq] .= true
     fixed_idx = _get_fixed_idx(cb, cb.ind_lb)
 
-    kkt = _prepare_sensitivity_kkt(solver, config)
+    kkt = get_sensitivity_kkt(solver, config)
 
     KKT = typeof(kkt)
     Solver = typeof(solver)
@@ -83,69 +90,69 @@ in-place (with the same dimensions).
 function reset_sensitivity_cache!(sens::MadDiffSolver)
     sens.forward_cache = nothing
     sens.reverse_cache = nothing
-    sens.kkt = _prepare_sensitivity_kkt(sens.solver, sens.config)
+    sens.kkt = get_sensitivity_kkt(sens.solver, sens.config)
     return sens
 end
 
 """
     forward_differentiate!(sens::MadDiffSolver; d2L_dxdp=nothing, dg_dp=nothing,
-                           dl_dp=nothing, du_dp=nothing, dlcon_dp=nothing,
+                           dlvar_dp=nothing, duvar_dp=nothing, dlcon_dp=nothing,
                            ducon_dp=nothing)
 
 Compute forward sensitivities (JVP). Returns a `ForwardResult` with fields
-`dx`, `dλ`, `dzl`, and `dzu`.
+`dx`, `dy`, `dzl`, and `dzu`.
 """
 function forward_differentiate!(
     sens::MadDiffSolver;
     d2L_dxdp = nothing,
     dg_dp = nothing,
-    dl_dp = nothing,
-    du_dp = nothing,
+    dlvar_dp = nothing,
+    duvar_dp = nothing,
     dlcon_dp = nothing,
     ducon_dp = nothing,
 )
     result = ForwardResult(sens)
-    return forward_differentiate!(result, sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
+    return forward_differentiate!(result, sens; d2L_dxdp, dg_dp, dlvar_dp, duvar_dp, dlcon_dp, ducon_dp)
 end
 
 function forward_differentiate!(solver::AbstractMadNLPSolver;
-    d2L_dxdp = nothing, dg_dp = nothing, dl_dp = nothing, du_dp = nothing,
+    d2L_dxdp = nothing, dg_dp = nothing, dlvar_dp = nothing, duvar_dp = nothing,
     dlcon_dp = nothing, ducon_dp = nothing, kwargs...
 )
     config = MadDiffConfig(; kwargs...)
     sens = MadDiffSolver(solver; config)
-    return forward_differentiate!(sens; d2L_dxdp, dg_dp, dl_dp, du_dp, dlcon_dp, ducon_dp)
+    return forward_differentiate!(sens; d2L_dxdp, dg_dp, dlvar_dp, duvar_dp, dlcon_dp, ducon_dp)
 end
 
-function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dl_dp=nothing, du_dp=nothing)
-    return function(out, dx, dλ, dzl, dzu, sens)
+function make_param_pullback(; d2L_dxdp=nothing, dg_dp=nothing, dlcon_dp=nothing, ducon_dp=nothing, dlvar_dp=nothing, duvar_dp=nothing)
+    return function(out, dx, dy, dzl, dzu, sens)
         fill!(out, zero(eltype(out)))
         _pullback_sub!(out, d2L_dxdp, dx)
-        _pullback_sub!(out, dg_dp, dλ)
-        dλ_scaled = sens.reverse_cache.dλ_scaled
-        dλ_scaled .= dλ .* sens.reverse_cache.eq_scale
-        _pullback_add!(out, dlcon_dp, dλ_scaled)
-        _pullback_add!(out, ducon_dp, dλ_scaled)
-        _pullback_sub!(out, dl_dp, dzl)
-        _pullback_add!(out, du_dp, dzu)
+        _pullback_sub!(out, dg_dp, dy)
+        dy_scaled = sens.reverse_cache.dy_scaled
+        dy_scaled .= dy .* sens.reverse_cache.eq_scale
+        _pullback_add!(out, dlcon_dp, dy_scaled)
+        _pullback_add!(out, ducon_dp, dy_scaled)
+        _pullback_sub!(out, dlvar_dp, dzl)
+        _pullback_add!(out, duvar_dp, dzu)
         return out
     end
 end
 
 """
-    reverse_differentiate!(sens::MadDiffSolver; dL_dx=nothing, dL_dλ=nothing,
+    reverse_differentiate!(sens::MadDiffSolver; dL_dx=nothing, dL_dy=nothing,
                            dL_dzl=nothing, dL_dzu=nothing)
 
 Compute reverse sensitivities (VJP). Returns a `ReverseResult` with fields
-`dx`, `dλ`, `dzl`, `dzu`, if a pullback was provided to MadDiffSolver, `grad_p`.
+`dx`, `dy`, `dzl`, `dzu`, if a pullback was provided to MadDiffSolver, `grad_p`.
 """
-function reverse_differentiate!(sens::MadDiffSolver; dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing)
+function reverse_differentiate!(sens::MadDiffSolver; dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing)
     result = ReverseResult(sens)
-    return reverse_differentiate!(result, sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+    return reverse_differentiate!(result, sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
 end
 
-function reverse_differentiate!(solver::AbstractMadNLPSolver; param_pullback = nothing, dL_dx = nothing, dL_dλ = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
+function reverse_differentiate!(solver::AbstractMadNLPSolver; param_pullback = nothing, dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, kwargs...)
     config = MadDiffConfig(; kwargs...)
     sens = MadDiffSolver(solver; config, param_pullback)
-    return reverse_differentiate!(sens; dL_dx, dL_dλ, dL_dzl, dL_dzu)
+    return reverse_differentiate!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
 end

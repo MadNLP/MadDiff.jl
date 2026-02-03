@@ -1,15 +1,15 @@
-function _prepare_sensitivity_kkt(solver, config::MadDiffConfig)
+function get_sensitivity_kkt(solver, config::MadDiffConfig)
     if !config.reuse_kkt && isnothing(config.kkt_system)
         error("reuse_kkt=false requires kkt_system to be set.")
     end
 
-    reusing_solver_kkt = config.reuse_kkt && !_has_custom_config(config)
+    reusing_solver_kkt = config.reuse_kkt && !_needs_new_kkt(config)
 
     kkt = if reusing_solver_kkt
         solver.kkt
     else
         # config.reuse_kkt && @info "Ignoring reuse_kkt=true since custom KKT config was passed. To silence this message, pass reuse_kkt=false."
-        _build_kkt_for_sensitivity(
+        build_new_kkt(
             solver;
             kkt_system = config.kkt_system,
             kkt_options = config.kkt_options,
@@ -18,12 +18,12 @@ function _prepare_sensitivity_kkt(solver, config::MadDiffConfig)
         )
     end
     if !(reusing_solver_kkt && config.skip_kkt_refactorization)
-        _refactorize_kkt_for_sensitivity!(kkt, solver)
+        refactorize_kkt!(kkt, solver)
     end
     return kkt
 end
 
-function _refactorize_kkt_for_sensitivity!(kkt, solver::MadNLPSolver)
+function refactorize_kkt!(kkt, solver::MadNLPSolver)
     set_aug_diagonal!(kkt, solver)
     set_aug_rhs!(solver, kkt, solver.c, solver.mu)
     dual_inf_perturbation!(primal(solver.p), solver.ind_llb, solver.ind_uub, solver.mu, solver.opt.kappa_d)
@@ -34,7 +34,7 @@ function _refactorize_kkt_for_sensitivity!(kkt, solver::MadNLPSolver)
     return nothing
 end
 
-function _build_kkt_for_sensitivity(
+function build_new_kkt(
         solver::AbstractMadNLPSolver;
         kkt_system = nothing,
         kkt_options = nothing,
@@ -59,4 +59,58 @@ function _build_kkt_for_sensitivity(
     eval_lag_hess_wrapper!(solver, kkt_new, solver.x, solver.y)
 
     return kkt_new
+end
+
+function _solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
+    d = cache.kkt_sol
+    work = cache.kkt_work
+
+    copyto!(full(d), full(w))
+    solver = sens.solver
+    iterator = if sens.kkt === solver.kkt
+        solver.iterator
+    else
+        RichardsonIterator(
+            sens.kkt;
+            opt=solver.iterator.opt,
+            logger=solver.iterator.logger,
+            cnt=solver.cnt,
+        )
+    end
+    solver.cnt.linear_solver_time += @elapsed begin
+        if solve_refine!(d, iterator, w, work)
+            # ok
+        elseif improve!(sens.kkt.linear_solver)
+            solve_refine!(d, iterator, w, work)
+        end
+    end
+    copyto!(full(w), full(d))
+    return nothing
+end
+
+function _adjoint_solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
+    d = cache.kkt_sol
+    work = cache.kkt_work
+
+    copyto!(full(d), full(w))
+    solver = sens.solver
+    iterator = if sens.kkt === solver.kkt
+        solver.iterator
+    else
+        RichardsonIterator(
+            sens.kkt;
+            opt=solver.iterator.opt,
+            logger=solver.iterator.logger,
+            cnt=solver.cnt,
+        )
+    end
+    solver.cnt.linear_solver_time += @elapsed begin
+        if adjoint_solve_refine!(d, iterator, w, work)
+            # ok
+        elseif improve!(sens.kkt.linear_solver)
+            adjoint_solve_refine!(d, iterator, w, work)
+        end
+    end
+    copyto!(full(w), full(d))
+    return nothing
 end
