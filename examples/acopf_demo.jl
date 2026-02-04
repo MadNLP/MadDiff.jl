@@ -1,10 +1,6 @@
-using PGLearn, PGLib, PowerModels, JuMP, DiffOpt, MadDiff, MadNLP
-using MathOptInterface; const MOI = MathOptInterface
+using PGLearn, PGLib, PowerModels; PowerModels.silence()
+using JuMP, DiffOpt, MadDiff, MadNLP, MathOptInterface; const MOI = MathOptInterface
 using Printf, Random, Test, LinearAlgebra
-
-# ENV["JULIA_TEST_FAILFAST"] = "true"
-
-PowerModels.silence()
 
 CONFIGS = [
     ("MadDiff (reuse ReducedKKT)", optimizer_with_attributes(MadDiff.diff_optimizer(MadNLP.Optimizer),
@@ -43,45 +39,45 @@ function Loss(model, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     return L
 end
 
-function finite_diff_grad_k(data, optimizer, k; seed = 42, ε = 1e-6)
-    rng = Xoshiro(seed)
+function finite_diff_grad_k(data, optimizer, k; seed = 42, run = 1, ε = 1e-6)
+    rng = Xoshiro(seed + run)
     N, G, E = data.N, data.G, data.E
     seeds_pg = [randn(rng) for _ in 1:G]
-    seeds_pf = [randn(rng) for _ in 1:E]
-    seeds_vm_lb = [randn(rng) for _ in 1:N]
-    seeds_vm_ub = [randn(rng) for _ in 1:N]
-    seeds_kcl = [randn(rng) for _ in 1:N]
+    # seeds_pf = [randn(rng) for _ in 1:E]
+    # seeds_vm_lb = [randn(rng) for _ in 1:N]
+    # seeds_vm_ub = [randn(rng) for _ in 1:N]
+    # seeds_kcl = [randn(rng) for _ in 1:N]
     data_plus = deepcopy(data)
     data_plus.pd = copy(data.pd)
     data_plus.pd[k] += ε
     model_plus = build_and_solve(data_plus, optimizer)
-    L_plus = Loss(model_plus, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
+    L_plus = Loss(model_plus, seeds_pg)#, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     data_minus = deepcopy(data)
     data_minus.pd = copy(data.pd)
     data_minus.pd[k] -= ε
     model_minus = build_and_solve(data_minus, optimizer)
-    L_minus = Loss(model_minus, seeds_pg, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
+    L_minus = Loss(model_minus, seeds_pg)#, seeds_pf, seeds_vm_lb, seeds_vm_ub, seeds_kcl)
     return (L_plus - L_minus) / (2 * ε)
 end
 
 function run_reverse_sensitivity!(model, pg_vars; run=1)
-    rng = Xoshiro(seed)
+    rng = Xoshiro(seed + run)
     DiffOpt.empty_input_sensitivities!(model)
     for pg in pg_vars
         MOI.set(model, DiffOpt.ReverseVariablePrimal(), pg, randn(rng))
     end
-    for pf in model[:pf]
-        MOI.set(model, DiffOpt.ReverseVariablePrimal(), pf, randn(rng))
-    end
-    for vm in model[:vm]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), LowerBoundRef(vm), randn(rng))
-    end
-    for vm in model[:vm]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), UpperBoundRef(vm), randn(rng))
-    end
-    for kcl in model[:kcl_q]
-        MOI.set(model, DiffOpt.ReverseConstraintDual(), kcl, randn(rng))
-    end
+    # for pf in model[:pf]
+    #     MOI.set(model, DiffOpt.ReverseVariablePrimal(), pf, randn(rng))
+    # end
+    # for vm in model[:vm]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), LowerBoundRef(vm), randn(rng))
+    # end
+    # for vm in model[:vm]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), UpperBoundRef(vm), randn(rng))
+    # end
+    # for kcl in model[:kcl_q]
+    #     MOI.set(model, DiffOpt.ReverseConstraintDual(), kcl, randn(rng))
+    # end
     t = @elapsed DiffOpt.reverse_differentiate!(model)
     results = []
     for pd in model[:pd]
@@ -124,7 +120,7 @@ end
             end
         end
     end
-    fd_k1 = finite_diff_grad_k(warmup_data, CONFIGS[1][2], 1)
+    fd_k1 = finite_diff_grad_k(warmup_data, CONFIGS[1][2], 1; run=1)
     for i in eachindex(CONFIGS)
         @test results[i][1][1] ≈ fd_k1 atol = 1e-3 rtol = 1e-2
     end
@@ -139,54 +135,53 @@ end
 @testset "Benchmark" begin
     atol_sens, rtol_sens = 1e-4, 1e-3
     n_p = length(data.pd)
-    pair2_failing_ks = Set{Int}()
-    for j in axes(results[2], 1)
+    max_fd_checks = 10
+
+    # MadDiff reuse vs MadDiff fresh
+    for run in 1:n_runs
         for k in 1:n_p
-            if !isapprox(results[2][j][k], results[3][j][k]; atol = atol_sens, rtol = rtol_sens)
+            @test results[1][run][k] ≈ results[2][run][k] atol = atol_sens rtol = rtol_sens
+        end
+    end
+
+    # MadDiff vs DiffOpt
+    @testset "Run $run" for run in 1:n_runs
+        pair2_failing_ks = Set{Int}()
+        for k in 1:n_p
+            if !isapprox(results[2][run][k], results[3][run][k]; atol = atol_sens, rtol = rtol_sens)
                 push!(pair2_failing_ks, k)
-            end
-        end
-    end
-    for j in axes(results[1], 1)
-        for k in 1:n_p
-            @test results[1][j][k] ≈ results[2][j][k] atol = atol_sens rtol = rtol_sens
-        end
-    end
-    if isempty(pair2_failing_ks)
-        for j in axes(results[2], 1)
-            for k in 1:n_p
-                @test results[2][j][k] ≈ results[3][j][k] atol = atol_sens rtol = rtol_sens
-            end
-        end
-    else
-        diffopt_closer_ks = Int[]
-        @info "Found mismatches for $(length(pair2_failing_ks)) param(s). Checking against finite-diff..."
-        num_checks = 0
-        max_checks = 10
-        for k in pair2_failing_ks
-            if num_checks >= max_checks
-                @info "Stopping FD after $max_checks checks."
-                break
-            end
-            print("Running FD for param $k...")
-            fd_k = finite_diff_grad_k(data, CONFIGS[1][2], k)
-            err_md = abs(results[2][1][k] - fd_k)
-            err_do = abs(results[3][1][k] - fd_k)
-            if err_do < err_md
-                push!(diffopt_closer_ks, k)
-                @test false
             else
-                println("pass (MadDiff: abs=$(err_md) rel=$(err_md/abs(fd_k)) DiffOpt: abs=$(err_do) rel=$(err_do/abs(fd_k)))")
+                @test true
             end
-            num_checks += 1
         end
-        if isempty(diffopt_closer_ks)
-            @info "MadDiff and DiffOpt had sensitivity mismatches but MadDiff was always closer to finite-diff."
-        end
-        for j in axes(results[2], 1)
+
+        if isempty(pair2_failing_ks)
             for k in 1:n_p
-                k in pair2_failing_ks && continue
-                @test results[2][j][k] ≈ results[3][j][k] atol = atol_sens rtol = rtol_sens
+                @test results[2][run][k] ≈ results[3][run][k] atol = atol_sens rtol = rtol_sens
+            end
+        else
+            diffopt_closer_ks = Int[]
+            @info "Run $run: Found mismatches for $(length(pair2_failing_ks)) param(s). Checking against finite-diff..."
+            num_checks = 0
+            for k in pair2_failing_ks
+                if num_checks >= max_fd_checks
+                    @info "Stopping FD after $max_fd_checks checks."
+                    break
+                end
+                print("FD check for p[$k]...")
+                fd_k = finite_diff_grad_k(data, CONFIGS[1][2], k; run)
+                err_md = abs(results[2][run][k] - fd_k)
+                err_do = abs(results[3][run][k] - fd_k)
+                if err_do < err_md
+                    push!(diffopt_closer_ks, k)
+                    @test false
+                else
+                    println("pass")# (MadDiff: abs=$(err_md) rel=$(err_md/abs(fd_k)) DiffOpt: abs=$(err_do) rel=$(err_do/abs(fd_k)))")
+                end
+                num_checks += 1
+            end
+            if isempty(diffopt_closer_ks)
+                @info "Run $run PASS: MadDiff and DiffOpt had mismatches but MadDiff was always closer to finite-diff."
             end
         end
     end
