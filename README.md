@@ -4,11 +4,24 @@
 [![Build Status](https://github.com/klamike/MadDiff.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/klamike/MadDiff.jl/actions/workflows/ci.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/klamike/MadDiff.jl/branch/main/graph/badge.svg?token=ERB8DC2NZE)](https://codecov.io/gh/klamike/MadDiff.jl)
 
-MadDiff is a Julia package for differentiating MadSuite solvers. MadDiff relies on MadNLP's KKT system and linear solver infrastructure, allowing both the solve and the differentiation to run on the GPU, and to re-use the existing KKT system. It supports LP, QP, and NLP using KKT systems from MadNLP, MadIPM, MadNCL, and HybridKKT. For reverse mode with custom KKT systems, define `adjoint_mul!` and `adjoint_solve!`; forward mode requires no additional modifications besides setting the `kkt_system` option. MadDiff also has an experimental integration with the DiffOpt API.
+MadDiff implements forward and reverse mode implicit differentiation for MadSuite solvers. MadDiff leverages MadNLP's modular KKT and linear solver infrastructure, supporting LP, QP, and NLP using KKT systems from [MadNLP](https://github.com/MadNLP/MadNLP.jl), [MadIPM](https://github.com/MadNLP/MadIPM.jl), [MadNCL](https://github.com/MadNLP/MadNCL.jl), and [HybridKKT](https://github.com/MadNLP/HybridKKT.jl).
 
 ## NLPModels API
 
 The NLPModels API requires that your `AbstractNLPModel` implementation includes the `ParametricNLPModels` API. Currently, only the MadNLP MOIModel is supported. Support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
+
+
+```julia
+nlp = ...  # must implement ParametricNLPModels API
+solver = MadNLP.MadNLPSolver(nlp)
+solution = MadNLP.solve!(solver)
+
+diff = MadDiff.MadDiffSolver(solver)
+
+dL_dx, dL_dy, dL_dzl, dL_dzu = ...  # loss sensitivity vectors
+rev = MadDiff.reverse_differentiate!(diff; dL_dx, dL_dy, dL_dzl, dL_dzu)
+rev.grad_p  # gradient of the loss with respect to the parameters
+```
 
 ## DiffOpt API
 
