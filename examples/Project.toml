@@ -17,7 +17,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [sources]
 MadDiff = {path = ".."}
-MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
 MadNLPGPU = {rev = "master", subdir = "lib/MadNLPGPU", url = "https://github.com/MadNLP/MadNLP.jl.git"}
 PGLearn = {rev = "mk/acp_param", url = "https://github.com/AI4OPT/PGLearn.jl"}
 

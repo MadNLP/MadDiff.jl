@@ -1,13 +1,30 @@
 function forward_differentiate!(
-    result::ForwardResult,
-    sens::MadDiffSolver;
-    d2L_dxdp = nothing,
-    dg_dp = nothing,
-    dlvar_dp = nothing,
-    duvar_dp = nothing,
-    dlcon_dp = nothing,
-    ducon_dp = nothing,
-)
+    result::ForwardResult, sens::MadDiffSolver{T}, Δp::AbstractVector,
+) where {T}
+    solver = sens.solver
+    cb = solver.cb
+    nlp = solver.nlp
+    cache = get_forward_cache!(sens)
+
+    unpack_x!(cache.x_nlp, cb, variable(solver.x))
+    unpack_y!(cache.y_nlp, cb, solver.y)
+    
+    x = cache.x_nlp
+    y = cache.y_nlp
+    d2L_dxdp = cache.hpv_nlp
+    dg_dp = cache.jpv_nlp
+    dlvar_dp = cache.dlvar_nlp
+    duvar_dp = cache.duvar_nlp
+    dlcon_dp = cache.dlcon_nlp
+    ducon_dp = cache.ducon_nlp
+
+    ParametricNLPModels.hpprod!(nlp, x, y, Δp, d2L_dxdp; obj_weight = cb.obj_sign)
+    ParametricNLPModels.jpprod!(nlp, x, Δp, dg_dp)
+    ParametricNLPModels.lvar_jpprod!(nlp, Δp, dlvar_dp)
+    ParametricNLPModels.uvar_jpprod!(nlp, Δp, duvar_dp)
+    ParametricNLPModels.lcon_jpprod!(nlp, Δp, dlcon_dp)
+    ParametricNLPModels.ucon_jpprod!(nlp, Δp, ducon_dp)
+
     pack_jvp!(sens; d2L_dxdp, dg_dp, dlvar_dp, duvar_dp, dlcon_dp, ducon_dp)
     solve_jvp!(sens)
     unpack_jvp!(result, sens; dlvar_dp, duvar_dp)
@@ -23,9 +40,6 @@ function pack_jvp!(
     dlcon_dp = nothing,
     ducon_dp = nothing,
 ) where {T}
-    all(isnothing, (d2L_dxdp, dg_dp, dlvar_dp, duvar_dp, dlcon_dp, ducon_dp)) &&
-        throw(ArgumentError("At least one of d2L_dxdp, dg_dp, dlvar_dp, duvar_dp, dlcon_dp, ducon_dp must be provided"))
-
     n_x = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(sens.solver.nlp)
     !isnothing(d2L_dxdp) && @lencheck n_x d2L_dxdp

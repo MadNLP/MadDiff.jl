@@ -12,7 +12,7 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     SparseCondensedKKTSystem, DenseCondensedKKTSystem,
     ScaledSparseKKTSystem, SparseKKTSystem, DenseKKTSystem, 
     AbstractKKTVector, UnreducedKKTVector, PrimalVector,
-    unpack_y!, unpack_z!,
+    unpack_x!, unpack_y!, unpack_z!,
     eval_jac_wrapper!, eval_lag_hess_wrapper!,
     AbstractCallback, SparseCallback, MakeParameter, create_array,
     @debug, @sprintf, _symv!
@@ -20,6 +20,7 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
 const NLPModels = MadNLP.NLPModels
 import MadNLP.NLPModels: @lencheck
 import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
+import ParametricNLPModels
 
 include("packing.jl")
 include("adjoint.jl")
@@ -32,7 +33,7 @@ include("reverse.jl")
 
 export MadDiffSolver, MadDiffConfig
 export forward_differentiate!, reverse_differentiate!
-export reset_sensitivity_cache!, make_param_pullback
+export reset_sensitivity_cache!
 
 # implemented in MathOptInterfaceExt
 function diff_optimizer end

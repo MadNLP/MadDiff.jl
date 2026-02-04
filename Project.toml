@@ -6,6 +6,7 @@ authors = ["Klamkin, Michael <mklamkin3@gatech.edu>"]
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
+ParametricNLPModels = "1ff82034-6bb8-44a0-b51b-5c1bd563924f"
 
 [weakdeps]
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
@@ -15,7 +16,8 @@ MadNCL = "434a0bcb-5a7c-42b2-a9d3-9e3f760e7af0"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
-MadNLP = {rev = "master", url = "https://github.com/MadNLP/MadNLP.jl.git"}
+MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
+ParametricNLPModels = {rev = "mk/pnlpm", url = "https://github.com/klamike/ParametricNLPModels.jl.git"}
 
 [extensions]
 DiffOptExt = ["DiffOpt", "MathOptInterface"]

@@ -118,29 +118,18 @@ function _invalidate_factorization!(m::Optimizer{OT, T}) where {OT, T}
 end
 
 function _invalidate_sensitivity!(m::Optimizer{OT, T}) where {OT, T}
-    m.sensitivity_context = nothing
     return _invalidate_factorization!(m)
 end
 
 function _get_sensitivity_solver!(model::Optimizer)
     if isnothing(model.sensitivity_solver)
-        ctx = _get_sensitivity_context!(model)
         model.sensitivity_solver = MadDiff.MadDiffSolver(
             model.inner.solver;
             config = model.sensitivity_config,
-            param_pullback = _make_param_pullback_closure(),
-            n_p = ctx.n_p,
             extension = model,
         )
     end
     return model.sensitivity_solver
-end
-
-function _get_sensitivity_context!(model::Optimizer{OT, T}) where {OT, T}
-    if isnothing(model.sensitivity_context)
-        model.sensitivity_context = SensitivityContext(model.inner; T)
-    end
-    return model.sensitivity_context
 end
 
 function _resize_and_zero!(cache::Vector{T}, n::Int) where {T}

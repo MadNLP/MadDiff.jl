@@ -5,20 +5,6 @@ function assert_solved_and_feasible(solver::AbstractMadNLPSolver)
     return nothing
 end
 
-_pullback_add!(out, ::Nothing, v) = nothing
-function _pullback_add!(out, M, v)
-    @lencheck size(M, 1) v
-    out .+= M' * v
-    return nothing
-end
-
-_pullback_sub!(out, ::Nothing, v) = nothing
-function _pullback_sub!(out, M, v)
-    @lencheck size(M, 1) v
-    out .-= M' * v
-    return nothing
-end
-
 _get_wrapper_type(x) = Base.typename(typeof(x)).wrapper
 
 struct _SensitivitySolverShim{T, S<:AbstractMadNLPSolver{T}, K<:AbstractKKTSystem{T}} <: AbstractMadNLPSolver{T}

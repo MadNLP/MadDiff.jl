@@ -24,65 +24,44 @@ function MadDiff.reverse_differentiate!(model::Optimizer)
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, dL_dy, dL_dzl, dL_dzu
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
 ) where {S <: MOI.GreaterThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = get(ctx.primal_idx, vi, 0)
-    !iszero(idx) && (dL_dzl[idx] = val)
+    idx = vi.value
+    dL_dzl[idx] = val
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, dL_dy, dL_dzl, dL_dzu
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
 ) where {S <: MOI.LessThan}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = get(ctx.primal_idx, vi, 0)
-    !iszero(idx) && (dL_dzu[idx] = -val)
+    idx = vi.value
+    dL_dzu[idx] = -val
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, dL_dy, dL_dzl, dL_dzu
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
 ) where {S <: MOI.Interval}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = get(ctx.primal_idx, vi, 0)
-    if !iszero(idx)
-        dL_dzl[idx] = val
-        dL_dzu[idx] = -val
-    end
+    idx = vi.value
+    dL_dzl[idx] = val
+    dL_dzu[idx] = -val
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, ctx, dL_dy, dL_dzl, dL_dzu
+    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
 ) where {S <: MOI.EqualTo}
     vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = get(ctx.primal_idx, vi, 0)
-    if !iszero(idx)
-        dL_dzl[idx] = val
-        dL_dzu[idx] = -val
-    end
+    idx = vi.value
+    dL_dzl[idx] = val
+    dL_dzu[idx] = -val
 end
 
 function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{F, S}, val, inner, ctx, dL_dy, dL_dzl, dL_dzu
+    ci::MOI.ConstraintIndex{F, S}, val, inner, dL_dy, dL_dzl, dL_dzu
 ) where {F, S}
     row = _constraint_row(inner, ci)
     dL_dy[row] = val
-end
-
-function _make_param_pullback_closure()
-    return function(out, dx, dy, dzl, dzu, sens)
-        model = sens.ext
-        x = model.inner.result.solution
-        solver = model.inner.solver
-        obj_sign = solver.cb.obj_sign
-        obj_scale = solver.cb.obj_scale[]
-        y = model.inner.result.multipliers .* (obj_sign * obj_scale)
-        dx_cpu = dx
-        dy_cpu = dy .* (obj_sign * obj_scale)
-
-        grad_p = _compute_param_pullback!(model.inner, x, y, dx_cpu, dy_cpu, model.sensitivity_context, obj_scale)
-        copyto!(out, grad_p)
-        return out
-    end
 end
 
 function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
@@ -93,14 +72,15 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     MadDiff.assert_solved_and_feasible(solver)
     isempty(inner.parameters) && error("No parameters in model")
 
-    ctx = _get_sensitivity_context!(model)
-    n_con = NLPModels.get_ncon(solver.nlp)
     sens = _get_sensitivity_solver!(model)
 
     n_x = NLPModels.get_nvar(sens.solver.nlp)
+    n_con = NLPModels.get_ncon(solver.nlp)
+
     dL_dx = _get_dL_dx!(model, n_x)
     for (vi, val) in model.reverse.primal_seeds
-        dL_dx[ctx.primal_idx[vi]] = val
+        idx = vi.value
+        dL_dx[idx] = val
     end
 
     dL_dy = _get_dL_dy!(model, n_con)
@@ -108,7 +88,7 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     dL_dzu = _get_dL_dzu!(model, n_x)
 
     for (ci, val) in model.reverse.dual_seeds
-        _process_reverse_dual_input!(ci, val, inner, ctx, dL_dy, dL_dzl, dL_dzu)
+        _process_reverse_dual_input!(ci, val, inner, dL_dy, dL_dzl, dL_dzu)
     end
 
     dL_dy .*= -solver.cb.obj_sign
@@ -127,7 +107,8 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     end
 
     for (ci, vi) in model.param_ci_to_vi
-        model.reverse.param_outputs[ci] = grad_p_cpu[ctx.param_idx[vi]]
+        idx = inner.param_vi_to_idx[vi]
+        model.reverse.param_outputs[ci] = grad_p_cpu[idx]
     end
     return
 end

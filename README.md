@@ -8,37 +8,7 @@ MadDiff is a Julia package for differentiating MadSuite solvers. MadDiff relies 
 
 ## NLPModels API
 
-```julia
-using JuMP
-using NLPModelsJuMP
-using MadNLP
-using MadDiff
-using LinearAlgebra
-
-model = Model()
-@variable(model, x)
-@constraint(model, x >= 2.0)  # the RHS is 2*p
-@objective(model, Min, x^2)
-
-nlp = MathOptNLPModel(model)
-solver = MadNLP.MadNLPSolver(nlp)
-result = MadNLP.solve!(solver)
-
-sens = MadDiff.MadDiffSolver(solver)
-# NOTE: when using NLPModelsJuMP with MadDiff's NLPModels API,
-#       be careful about variable/constraint ordering wrt JuMP.
-
-Dp_lcon = [2.0;;]  # ∂lcon/∂p (n_con × n_params matrix)
-Δp = [1.0]  # parameter perturbation direction
-fwd = MadDiff.forward_differentiate!(sens; Dp_lcon=Dp_lcon * Δp)
-
-dL_dx = [1.0]  # gradient of loss w.r.t. x*
-pullback = MadDiff.make_param_pullback(Dp_lcon=Dp_lcon)
-sens_rev = MadDiff.MadDiffSolver(solver; param_pullback, n_params=1)
-rev = MadDiff.reverse_differentiate!(sens_rev; dL_dx)
-
-@assert dot(dL_dx, fwd.dx) ≈ dot(rev.grad_p, Δp)
-```
+The NLPModels API requires that your `AbstractNLPModel` implementation includes the `ParametricNLPModels` API. Currently, only the MadNLP MOIModel is supported. Support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
 
 ## DiffOpt API
 

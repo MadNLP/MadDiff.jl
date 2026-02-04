@@ -10,6 +10,14 @@ struct ForwardCache{VT, VK, PV}
     duvar_dp::PV
     dlcon_dp::VT
     ducon_dp::VT
+    x_nlp::VT
+    y_nlp::VT
+    hpv_nlp::VT
+    jpv_nlp::VT
+    dlvar_nlp::VT
+    duvar_nlp::VT
+    dlcon_nlp::VT
+    ducon_nlp::VT
 end
 
 function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
@@ -29,6 +37,14 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_con),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
             PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_x),
             zeros_like(cb, T, n_con),
             zeros_like(cb, T, n_con),
         )
@@ -65,18 +81,20 @@ struct ReverseCache{VT, VK, PV}
     dL_dy::VT
     dL_dzl::VT
     dL_dzu::VT
-    eq_scale::VT
+    x_nlp::VT
+    y_nlp::VT
     dy_scaled::VT
+    tmp_p::VT
 end
 
 function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.reverse_cache)
         cb = sens.solver.cb
+        n_x = NLPModels.get_nvar(sens.solver.nlp)
         n_con = NLPModels.get_ncon(sens.solver.nlp)
         x_array = full(sens.solver.x)
         VT = typeof(x_array)
         n_ineq = length(cb.ind_ineq)
-
         sens.reverse_cache = ReverseCache(
             UnreducedKKTVector(sens.kkt),
             UnreducedKKTVector(sens.kkt),
@@ -87,8 +105,10 @@ function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_con),
             zeros_like(cb, T, length(cb.ind_lb)),
             zeros_like(cb, T, length(cb.ind_ub)),
-            ifelse.(sens.is_eq, T(1 // 2), one(T)),
+            zeros_like(cb, T, n_x),
             zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, sens.n_p),
         )
     end
     return sens.reverse_cache

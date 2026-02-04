@@ -2,9 +2,8 @@ module MathOptInterfaceExt
 
 import MadDiff
 import MadNLP; const NLPModels = MadNLP.NLPModels
+import ParametricNLPModels
 import MathOptInterface as MOI
-
-include("moi_evaluator.jl")
 
 mutable struct ForwardModeData{T}
     param_perturbations::Dict{MOI.ConstraintIndex, T}
@@ -53,7 +52,6 @@ mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimize
     work::WorkBuffers{T}
     sensitivity_config::MadDiff.MadDiffConfig
     sensitivity_solver::Union{Nothing, MadDiff.MadDiffSolver}
-    sensitivity_context::Union{Nothing, SensitivityContext}
     diff_time::T
 end
 
@@ -66,7 +64,6 @@ function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimi
         WorkBuffers{T}(),
         MadDiff.MadDiffConfig(),
         nothing,
-        nothing,
         zero(T),
     )
 end
@@ -76,8 +73,6 @@ function MadDiff.diff_optimizer(optimizer_constructor; kwargs...)
 end
 
 include("moi_wrapper.jl")
-include("moi_jvp.jl")
-include("moi_vjp.jl")
 include("forward_mode.jl")
 include("reverse_mode.jl")
 

@@ -21,55 +21,40 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     MadDiff.assert_solved_and_feasible(solver)
     isempty(inner.parameters) && error("No parameters in model")
 
-    ctx = _get_sensitivity_context!(model)
-    n_con = NLPModels.get_ncon(solver.nlp)
-
-    Δp = ctx.Δp
-    fill!(Δp, zero(T))
+    n_p = inner.param_n_p
+    Δp = zeros(T, n_p)
     for (ci, dp) in model.forward.param_perturbations
         vi = model.param_ci_to_vi[ci]
-        Δp[ctx.param_idx[vi]] = dp
+        idx = inner.param_vi_to_idx[vi]
+        Δp[idx] = dp
     end
-
-    x = inner.result.solution
-    obj_sign = solver.cb.obj_sign
-    VT = typeof(solver.y)
-    if VT <: Vector
-        y = _get_y_cache!(model, n_con)
-        MadNLP.unpack_y!(y, solver.cb, solver.y)
-        y .*= obj_sign
-    else
-        y_gpu = similar(solver.y, n_con)
-        MadNLP.unpack_y!(y_gpu, solver.cb, solver.y)
-        y_gpu .*= obj_sign
-        y = Array(y_gpu)
-    end
-    d2L_dxdp, dg_dp = _compute_param_jvp!(inner, x, y, Δp, ctx)
 
     sens = _get_sensitivity_solver!(model)
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.forward_differentiate!(sens; d2L_dxdp, dg_dp)
+        result = MadDiff.forward_differentiate!(sens, Δp)
         dx_cpu = result.dx
         dy_cpu = result.dy
     else
-        d2L_dxdp_gpu = d2L_dxdp isa VT ? d2L_dxdp : VT(d2L_dxdp)
-        dg_dp_gpu = dg_dp isa VT ? dg_dp : VT(dg_dp)
-        result = MadDiff.forward_differentiate!(sens; d2L_dxdp=d2L_dxdp_gpu, dg_dp=dg_dp_gpu)
+        Δp_gpu = Δp isa VT ? Δp : VT(Δp)
+        result = MadDiff.forward_differentiate!(sens, Δp_gpu)
         dx_cpu = result.dx isa Vector ? result.dx : Array(result.dx)
         dy_cpu = result.dy isa Vector ? result.dy : Array(result.dy)
     end
 
-    for (i, vi) in enumerate(ctx.primal_vars)
+    primal_vars = inner.param_var_order
+    for (i, vi) in enumerate(primal_vars)
         model.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
+    n_con = NLPModels.get_ncon(solver.nlp)
+    obj_sign = solver.cb.obj_sign
     dy = _get_dy_cache!(model, n_con)
     dy .= (.-obj_sign) .* dy_cpu
 
     _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dy)
-    _store_bound_dual_sensitivities!(model, sens, result, ctx)
+    _store_bound_dual_sensitivities!(model, sens, result, inner)
     return
 end
 
@@ -77,7 +62,7 @@ function _constraint_row(inner, ci::MOI.ConstraintIndex{F, S}) where {F, S}
     if F == MOI.ScalarNonlinearFunction
         return length(inner.qp_data.constraints) + ci.value
     else
-        return ci.value  # TODO: check aff + quad + nlp
+        return ci.value
     end
 end
 
@@ -102,28 +87,30 @@ function _store_dual_sensitivities!(dual_sensitivities, inner, dy)
     return
 end
 
-function _store_bound_dual_sensitivities!(model, sens, result, ctx)
+function _store_bound_dual_sensitivities!(model, sens, result, inner)
     dsens = model.forward.dual_sensitivities
 
     dzl = result.dzl isa Vector ? result.dzl : Array(result.dzl)
     dzu = result.dzu isa Vector ? result.dzu : Array(result.dzu)
 
-    for (vi, ci) in ctx.vi_to_lb_ci
-        idx = ctx.primal_idx[vi]
+    for ci in MOI.get(inner, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.GreaterThan{Float64}}())
+        vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
+        idx = vi.value
         dsens[ci] = dzl[idx]
     end
-    for (vi, ci) in ctx.vi_to_ub_ci
-        idx = ctx.primal_idx[vi]
+    for ci in MOI.get(inner, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.LessThan{Float64}}())
+        vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
+        idx = vi.value
         dsens[ci] = -dzu[idx]
     end
-
-    for (vi, ci) in ctx.vi_to_interval_ci
-        idx = ctx.primal_idx[vi]
+    for ci in MOI.get(inner, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.Interval{Float64}}())
+        vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
+        idx = vi.value
         dsens[ci] = dzl[idx] - dzu[idx]
     end
-
-    for (vi, ci) in ctx.vi_to_eq_ci
-        idx = ctx.primal_idx[vi]
+    for ci in MOI.get(inner, MOI.ListOfConstraintIndices{MOI.VariableIndex, MOI.EqualTo{Float64}}())
+        vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
+        idx = vi.value
         dsens[ci] = dzl[idx] - dzu[idx]
     end
 
