@@ -18,7 +18,7 @@ mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
     Solver <: AbstractMadNLPSolver{T},
-    VB, FC, RC, E
+    VB, FC, RC
 }
     solver::Solver
     config::MadDiffConfig
@@ -27,10 +27,9 @@ mutable struct MadDiffSolver{
     is_eq::VB
     forward_cache::Union{Nothing, FC}
     reverse_cache::Union{Nothing, RC}
-    ext::E
 end
 
-function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig(), extension = nothing) where {T}
+function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig()) where {T}
     assert_solved_and_feasible(solver)
 
     n_p = solver.nlp.pmeta.nparam
@@ -54,11 +53,9 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     PV = PrimalVector{T,VT,VI}
     FC = ForwardCache{VT, VK, PV}
     RC = ReverseCache{VT, VK, PV}
-    E = typeof(extension)
-    return MadDiffSolver{T, KKT, Solver, VB, FC, RC, E}(
+    return MadDiffSolver{T, KKT, Solver, VB, FC, RC}(
         solver, config, kkt, n_p, is_eq,
         nothing, nothing,
-        extension,
     )
 end
 
@@ -69,9 +66,7 @@ function reset_sensitivity_cache!(sens::MadDiffSolver)
     return sens
 end
 
-function forward_differentiate!(
-    sens::MadDiffSolver, Δp::AbstractVector,
-)
+function forward_differentiate!(sens::MadDiffSolver, Δp::AbstractVector)
     return forward_differentiate!(ForwardResult(sens), sens, Δp)
 end
 

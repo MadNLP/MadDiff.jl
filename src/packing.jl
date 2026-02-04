@@ -68,3 +68,10 @@ function set_fixed_sensitivity!(dx, cb::SparseCallback{T, VT, VI, NLP, FH}, dlva
     end
     return nothing
 end
+
+function unpack_slack!(out, cb, dz, sens, dy)
+    out .= sens.is_eq .* dy ./ 2
+    out[cb.ind_ineq] .+= slack(dz) .* cb.con_scale[cb.ind_ineq]
+    out .*= cb.con_scale
+    return nothing
+end

@@ -123,11 +123,7 @@ end
 
 function _get_sensitivity_solver!(model::Optimizer)
     if isnothing(model.sensitivity_solver)
-        model.sensitivity_solver = MadDiff.MadDiffSolver(
-            model.inner.solver;
-            config = model.sensitivity_config,
-            extension = model,
-        )
+        model.sensitivity_solver = MadDiff.MadDiffSolver(model.inner.solver; config = model.sensitivity_config)
     end
     return model.sensitivity_solver
 end
