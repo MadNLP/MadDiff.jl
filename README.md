@@ -8,7 +8,8 @@ MadDiff implements forward and reverse mode implicit differentiation for MadSuit
 
 ## NLPModels API
 
-The NLPModels API requires that your `AbstractNLPModel` implementation includes the `ParametricNLPModels` API. Currently, only the MadNLP MOIModel is supported. Support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
+> [!NOTE]
+> The NLPModels API requires that your `AbstractNLPModel` implementation includes the `ParametricNLPModels` API. Currently, only the MadNLP MOIModel is supported. Support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
 
 
 ```julia
@@ -24,6 +25,8 @@ rev.grad_p  # gradient of the loss with respect to the parameters
 ```
 
 ## DiffOpt API
+
+MadDiff aims to be a drop-in replacement for DiffOpt with MadNLP. Simply switch `DiffOpt.diff_optimizer(MadNLP.Optimizer)` for `MadDiff.diff_optimizer(MadNLP.Optimizer)` and enjoy the speedup!
 
 ```julia
 using JuMP
