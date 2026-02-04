@@ -6,6 +6,9 @@
 
 MadDiff implements forward and reverse mode implicit differentiation for MadSuite solvers. MadDiff leverages MadNLP's modular KKT and linear solver infrastructure, supporting LP, QP, and NLP using KKT systems from [MadNLP](https://github.com/MadNLP/MadNLP.jl), [MadIPM](https://github.com/MadNLP/MadIPM.jl), [MadNCL](https://github.com/MadNLP/MadNCL.jl), and [HybridKKT](https://github.com/MadNLP/HybridKKT.jl).
 
+> [!WARNING]
+> MadDiff is a work-in-progress. Proceed with caution and verify correctness before use.
+
 ## NLPModels API
 
 > [!NOTE]
