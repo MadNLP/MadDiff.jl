@@ -26,8 +26,8 @@ MadDiff = {path = ".."}
 MadIPM = {rev = "mk/flip", url = "https://github.com/klamike/MadIPM.jl.git"}
 MadNCL = {rev = "mk/latest", url = "https://github.com/klamike/MadNCL.jl.git"}
 MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
-MadNLPGPU = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
-MadNLPTests = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLPGPU = {rev = "mk/moi_param", subdir = "lib/MadNLPGPU", url = "https://github.com/klamike/MadNLP.jl.git"}
+MadNLPTests = {rev = "mk/moi_param", subdir = "lib/MadNLPTests", url = "https://github.com/klamike/MadNLP.jl.git"}
 ParametricNLPModels = {rev = "mk/pnlpm", url = "https://github.com/klamike/ParametricNLPModels.jl.git"}
 
 [compat]
