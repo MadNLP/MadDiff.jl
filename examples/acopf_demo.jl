@@ -174,9 +174,9 @@ end
                 err_do = abs(results[3][run][k] - fd_k)
                 if err_do < err_md
                     push!(diffopt_closer_ks, k)
-                    @test false
+                    @test err_do ≥ err_md  # fail
                 else
-                    println("pass")# (MadDiff: abs=$(err_md) rel=$(err_md/abs(fd_k)) DiffOpt: abs=$(err_do) rel=$(err_do/abs(fd_k)))")
+                    println("pass (MadDiff: abs=$(err_md) rel=$(err_md/abs(fd_k)) DiffOpt: abs=$(err_do) rel=$(err_do/abs(fd_k)))")
                 end
                 num_checks += 1
             end
