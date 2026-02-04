@@ -70,18 +70,18 @@ function unpack_vjp!(result::ReverseResult, sens::MadDiffSolver)
     return result
 end
 
-function vjp_fill_pv!(kkt, dlvar_pv, duvar_pv, w)
-    fill!(full(dlvar_pv), zero(eltype(full(dlvar_pv))))
-    fill!(full(duvar_pv), zero(eltype(full(duvar_pv))))
-    dlvar_pv.values_lr .= kkt.l_lower .* dual_lb(w)
-    duvar_pv.values_ur .= .-kkt.u_lower .* dual_ub(w)
+function vjp_fill_pv!(kkt, pvl, pvu, w)
+    fill!(full(pvl), zero(eltype(full(pvl))))
+    fill!(full(pvu), zero(eltype(full(pvu))))
+    pvl.values_lr .= kkt.l_lower .* dual_lb(w)
+    pvu.values_ur .= .-kkt.u_lower .* dual_ub(w)
     return nothing
 end
-function vjp_fill_pv!(::AbstractUnreducedKKTSystem, dlvar_pv, duvar_pv, w)
-    fill!(full(dlvar_pv), zero(eltype(full(dlvar_pv))))
-    fill!(full(duvar_pv), zero(eltype(full(duvar_pv))))
-    dlvar_pv.values_lr .= dual_lb(w)
-    duvar_pv.values_ur .= .-dual_ub(w)
+function vjp_fill_pv!(::AbstractUnreducedKKTSystem, pvl, pvu, w)
+    fill!(full(pvl), zero(eltype(full(pvl))))
+    fill!(full(pvu), zero(eltype(full(pvu))))
+    pvl.values_lr .= dual_lb(w)
+    pvu.values_ur .= .-dual_ub(w)
     return nothing
 end
 
@@ -95,8 +95,8 @@ function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}) where {T}
     y = cache.y_nlp
     dx = result.dx
     dy = cache.dy_scaled
-    dzl = cache.dzl_full
-    dzu = cache.dzu_full
+    pvl = cache.dzl_full
+    pvu = cache.dzu_full
     tmp = cache.tmp_p
     obj_scale = cb.obj_scale[]
     σ = cb.obj_sign
@@ -115,21 +115,21 @@ function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}) where {T}
     ParametricNLPModels.jptprod!(nlp, x, dy, tmp)
     grad_p .+= tmp
 
-    vjp_fill_pv!(sens.kkt, dzl, dzu, w)
+    vjp_fill_pv!(sens.kkt, pvl, pvu, w)
 
-    unpack_dx!(x, cb, variable(dzl))
+    unpack_dx!(x, cb, variable(pvl))
     ParametricNLPModels.lvar_jptprod!(nlp, x, tmp)
     grad_p .-= tmp
 
-    unpack_dx!(x, cb, variable(dzu))
+    unpack_dx!(x, cb, variable(pvu))
     ParametricNLPModels.uvar_jptprod!(nlp, x, tmp)
     grad_p .+= tmp
 
-    unpack_slack!(y, cb, dzl, sens, dual(w))
+    unpack_slack!(y, cb, pvl, sens.is_eq, dual(w))
     ParametricNLPModels.lcon_jptprod!(nlp, y, tmp)
     grad_p .-= tmp
 
-    unpack_slack!(y, cb, dzu, sens, dual(w))
+    unpack_slack!(y, cb, pvu, sens.is_eq, dual(w))
     ParametricNLPModels.ucon_jptprod!(nlp, y, tmp)
     grad_p .+= tmp
 
