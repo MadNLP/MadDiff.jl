@@ -32,11 +32,8 @@ rev.grad_p  # gradient of the loss with respect to the parameters
 MadDiff aims to be a drop-in replacement for DiffOpt with MadNLP. Simply switch `DiffOpt.diff_optimizer(MadNLP.Optimizer)` for `MadDiff.diff_optimizer(MadNLP.Optimizer)` and enjoy the speedup!
 
 ```julia
-using JuMP
-using DiffOpt
-using MadDiff
-using MadNLP
-const MOI = MathOptInterface
+using JuMP, DiffOpt
+using MadDiff, MadNLP
 
 # just switch DiffOpt.diff_optimizer for MadDiff.diff_optimizer, everything else stays the same!
 model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
