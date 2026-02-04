@@ -35,7 +35,7 @@ function pack_jvp!(sens::MadDiffSolver{T}, cache) where {T}
     fill!(full(cache.dlvar_dp), zero(T))
     fill!(full(cache.duvar_dp), zero(T))
 
-    pack_hess(cache.d2L_dxdp, cb, cache.hpv_nlp)
+    pack_hess!(cache.d2L_dxdp, cb, cache.hpv_nlp)
     pack_cons!(cache.dg_dp, cb, cache.jpv_nlp)
     pack_cons!(cache.dlcon_dp, cb, cache.dlcon_nlp)
     pack_cons!(cache.ducon_dp, cb, cache.ducon_nlp)

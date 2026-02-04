@@ -7,7 +7,7 @@ end
 function pack_dx!(x, cb::AbstractCallback, x_full)
     x .= x_full
 end
-function pack_hess(x, cb::AbstractCallback, x_full)
+function pack_hess!(x, cb::AbstractCallback, x_full)
     pack_dx!(x, cb, x_full)
     x .*= cb.obj_scale[]
 end
@@ -27,7 +27,7 @@ end
 function pack_dx!(x, cb::SparseCallback{T, VT, VI, NLP, FH}, x_full) where {T, VT, VI, NLP, FH<:MakeParameter}
     x .= @view x_full[cb.fixed_handler.free]
 end
-function pack_hess(x, cb::SparseCallback{T, VT, VI, NLP, FH}, x_full) where {T, VT, VI, NLP, FH<:MakeParameter}
+function pack_hess!(x, cb::SparseCallback{T, VT, VI, NLP, FH}, x_full) where {T, VT, VI, NLP, FH<:MakeParameter}
     pack_dx!(x, cb, x_full)
     x .*= cb.obj_scale[]
 end
