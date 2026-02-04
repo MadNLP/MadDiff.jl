@@ -102,12 +102,11 @@ function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}) where {T}
     σ = cb.obj_sign
     σ_scaled = σ * obj_scale
 
-    unpack_x!(x, cb, variable(solver.x))
-    unpack_y!(y, cb, solver.y)
-
     grad_p = result.grad_p
     fill!(grad_p, zero(T))
 
+    unpack_x!(x, cb, variable(solver.x))
+    unpack_y!(y, cb, solver.y)
     y .*= σ_scaled
     ParametricNLPModels.hptprod!(nlp, x, y, dx, grad_p; obj_weight = σ_scaled)
     
