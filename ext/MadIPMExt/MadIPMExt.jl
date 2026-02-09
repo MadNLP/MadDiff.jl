@@ -2,7 +2,7 @@ module MadIPMExt
 
 using LinearAlgebra: mul!
 import MadDiff
-import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve!
+import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve_linear_system!
 import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
 import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim, _solve_with_refine!, _adjoint_solve_with_refine!, adjoint_solve!, adjoint_mul!, _adjoint_kktmul!
 
@@ -35,7 +35,7 @@ function _adjoint_normal_solve!(kkt::NormalKKTSystem{T}, w::AbstractKKTVector) w
     r2 .= wy
     mul!(r2, kkt.AT', r1, one(T), -one(T))  # A * r1 - wy
 
-    solve!(kkt.linear_solver, r2)
+    solve_linear_system!(kkt.linear_solver, r2)
     wy .= r2
 
     r1 .= wx

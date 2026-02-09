@@ -2,7 +2,7 @@ module HybridKKTExt
 
 import MadDiff
 import MadDiff: adjoint_solve!, adjoint_mul!, _adjoint_kktmul!
-import MadNLP: AbstractKKTVector, _madnlp_unsafe_wrap, dual_lb, dual_ub, full, solve!
+import MadNLP: AbstractKKTVector, _madnlp_unsafe_wrap, dual_lb, dual_ub, full, solve_linear_system!
 
 import HybridKKT
 import HybridKKT: HybridCondensedKKTSystem, index_copy!
@@ -57,7 +57,7 @@ function _adjoint_hybrid_solve!(kkt::HybridCondensedKKTSystem{T}, w::AbstractKKT
     mul!(wx, kkt.jt_csc, buffer2, one(T), one(T))
 
     # Reverse: Golub & Greif extraction
-    solve!(kkt.linear_solver, wx)
+    solve_linear_system!(kkt.linear_solver, wx)
     copyto!(buffer3, wx)
     mul!(wy, G, wx, -one(T), one(T))
 
@@ -85,7 +85,7 @@ function _adjoint_hybrid_solve!(kkt::HybridCondensedKKTSystem{T}, w::AbstractKKT
     end
 
     mul!(wx, G', wy, one(T), zero(T))
-    solve!(kkt.linear_solver, wx)
+    solve_linear_system!(kkt.linear_solver, wx)
     wx .+= buffer3
     wy .*= .-one(T)
     mul!(wy, G, wx, kkt.gamma[], one(T))

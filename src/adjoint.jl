@@ -240,7 +240,7 @@ end
 #   gₗ = Dₗ⁻¹ gₗ, gᵤ = Dᵤ⁻¹ gᵤ
 function adjoint_solve!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
     _adjoint_unreduced_post!(kkt, w)
-    solve!(kkt.linear_solver, full(w))
+    solve_linear_system!(kkt.linear_solver, full(w))
     _adjoint_unreduced_pre!(kkt, w)
     return w
 end
@@ -284,7 +284,7 @@ end
 function adjoint_solve!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     _adjoint_scaled_post!(kkt, w)
     w.xp .*= kkt.scaling_factor
-    solve!(kkt.linear_solver, primal_dual(w))
+    solve_linear_system!(kkt.linear_solver, primal_dual(w))
     _adjoint_scaled_pre!(kkt, w)
     return w
 end
@@ -376,7 +376,7 @@ end
 #   gₗ += -Dₗ⁻¹ yₗ,  gᵤ += -Dᵤ⁻¹ yᵤ
 function adjoint_solve!(kkt::SparseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
-    solve!(kkt.linear_solver, primal_dual(w))
+    solve_linear_system!(kkt.linear_solver, primal_dual(w))
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
@@ -414,7 +414,7 @@ function adjoint_solve!(
     #     [  0   Iₚ ]                        [ 0  0 ]
 
     # Solve linear system without low-rank part
-    solve!(kkt.linear_solver, w_)  # w_ stores the solution of Cx = b
+    solve_linear_system!(kkt.linear_solver, w_)  # w_ stores the solution of Cx = b
 
     # Add low-rank correction
     if p > 0
@@ -467,7 +467,7 @@ function _adjoint_condensed_solve!(kkt::SparseCondensedKKTSystem{T}, w::Abstract
     mul!(wx, kkt.jt_csc, buf2, one(T), one(T))
 
     # Reverse wx = A⁻¹(wx)
-    solve!(kkt.linear_solver, wx)
+    solve_linear_system!(kkt.linear_solver, wx)
 
     # Reverse wx = wx + jt_csc * buf
     mul!(buf, kkt.jt_csc', wx, one(T), one(T))
@@ -502,7 +502,7 @@ end
 
 function adjoint_solve!(kkt::DenseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
-    solve!(kkt.linear_solver, primal_dual(w))
+    solve_linear_system!(kkt.linear_solver, primal_dual(w))
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
@@ -563,7 +563,7 @@ function _adjoint_dense_condensed_solve!(kkt::DenseCondensedKKTSystem{T}, w::Abs
 
     # Solve K_condᵀ g = [g_x; g_y]
     xx .= wx
-    solve!(kkt.linear_solver, x)
+    solve_linear_system!(kkt.linear_solver, x)
 
     # g_r_x, g_r_y
     wx .= xx

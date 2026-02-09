@@ -2,7 +2,7 @@ module MadNCLExt
 
 import MadDiff
 import MadDiff: adjoint_solve!, adjoint_mul!, _adjoint_kktmul!, MadDiffSolver, forward_differentiate!, reverse_differentiate!
-import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, full, solve!, _symv!
+import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, full, solve_linear_system!, _symv!
 import MadNCL: NCLSolver, K1sAuglagKKTSystem, K2rAuglagKKTSystem, symul!
 import LinearAlgebra: mul!
 
@@ -97,7 +97,7 @@ function _adjoint_k1s_solve!(kkt::K1sAuglagKKTSystem{T}, w::AbstractKKTVector) w
     dx .= wx
 
     # Step H (adjoint): dx = A \ dx
-    solve!(kkt.linear_solver, dx)
+    solve_linear_system!(kkt.linear_solver, dx)
 
     # Step G (adjoint): dx = dx + J' * dy
     fill!(dy, zero(T))
@@ -147,7 +147,7 @@ function _adjoint_k2r_solve!(kkt::K2rAuglagKKTSystem{T}, w::AbstractKKTVector) w
     d[1:nx] .= wx
     d[nx+1:nx+ns] .= ws
     d[nx+ns+1:nx+ns+m] .= wy
-    solve!(kkt.linear_solver, d)
+    solve_linear_system!(kkt.linear_solver, d)
 
     wx .= view(d, 1:nx)
     ws .= view(d, nx+1:nx+ns)
