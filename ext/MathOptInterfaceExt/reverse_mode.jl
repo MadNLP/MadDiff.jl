@@ -98,12 +98,13 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
         grad_p_cpu = result.grad_p
     else
-        dL_dx_gpu = dL_dx isa VT ? dL_dx : VT(dL_dx)
-        dL_dy_gpu = dL_dy isa VT ? dL_dy : VT(dL_dy)
-        dL_dzl_gpu = dL_dzl isa VT ? dL_dzl : VT(dL_dzl)
-        dL_dzu_gpu = dL_dzu isa VT ? dL_dzu : VT(dL_dzu)
+        # TODO: pre-allocate
+        dL_dx_gpu = VT(dL_dx)
+        dL_dy_gpu = VT(dL_dy)
+        dL_dzl_gpu = VT(dL_dzl)
+        dL_dzu_gpu = VT(dL_dzu)
         result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu)
-        grad_p_cpu = result.grad_p isa Vector ? result.grad_p : Array(result.grad_p)
+        grad_p_cpu = Array(result.grad_p)
     end
 
     for (ci, vi) in model.param_ci_to_vi

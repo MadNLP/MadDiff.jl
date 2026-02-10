@@ -22,15 +22,16 @@ function get_bound_constraint_refs(model)
     return lb_cons, ub_cons
 end
 
-function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
-    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
-        # FIXME: we need to make sure linear_solver is passed to madnlp here
-        mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
-        optimizer = (;kwargs...) -> MadNLP.Optimizer(linear_solver=CUDSSSolver; kwargs...)
-        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts_filtered...))
-        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
+function _run(build_model; diffopt = false, param_idx = 1, dp = 1.0, optimizer = MadNLP.Optimizer, mad_opts...)
+    model = if diffopt
+        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
+        MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        m
     else
-        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+        Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+    end
+    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+        set_optimizer_attribute(model, "array_type", CuArray)
     end
     set_silent(model)
     vars, params = build_model(model)
@@ -55,29 +56,11 @@ function _wrap_optimizer(optimizer, mad_opts)
     return (;kwargs...) -> optimizer(; kwargs..., mad_opts...)
 end
 
+function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
+    return _run(build_model; diffopt = false, param_idx, dp, MadNLP.Optimizer, mad_opts...)
+end
 function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer=MadNLP.Optimizer, mad_opts...)
-    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
-    MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
-    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
-        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
-    end
-    set_silent(model)
-    vars, params = build_model(model)
-    optimize!(model)
-
-    cons = get_constraint_refs(model)
-    lb_cons, ub_cons = get_bound_constraint_refs(model)
-
-    param = get_param(params, param_idx)
-    DiffOpt.empty_input_sensitivities!(model)
-    MOI.set(model, DiffOpt.ForwardConstraintSet(), ParameterRef(param), MOI.Parameter(dp))
-    DiffOpt.forward_differentiate!(model)
-
-    dx = [MOI.get(model, DiffOpt.ForwardVariablePrimal(), v) for v in vars]
-    dy = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
-    dzl = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in lb_cons]
-    dzu = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in ub_cons]
-    return dx, dy, dzl, dzu
+    return _run(build_model; diffopt = true, param_idx, dp, optimizer, mad_opts...)
 end
 
 function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
@@ -104,17 +87,17 @@ function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, 
     return nothing
 end
 
-function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
-    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
-        # FIXME: we need to make sure linear_solver is passed to madnlp here
-        mad_opts_filtered = Dict(k => v for (k, v) in pairs(mad_opts) if k != :linear_solver)
-        optimizer = (;kwargs...) -> MadNLP.Optimizer(linear_solver=CUDSSSolver; kwargs...)
-        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts_filtered...))
-        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
+function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    model = if !diffopt
+        Model(MadDiff.diff_optimizer(optimizer; mad_opts...))
     else
-        model = Model(MadDiff.diff_optimizer(optimizer; mad_opts...))
+        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
+        MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        m
+    end
+    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+        set_optimizer_attribute(model, "array_type", CuArray)
+        set_optimizer_attribute(model, MadDiff.MADDIFF_KKTSYSTEM, MadNLP.SparseKKTSystem)
     end
     set_silent(model)
     vars, params = build_model(model)
@@ -134,28 +117,10 @@ function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=n
 end
 
 function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
-    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
-    MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
-    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
-        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
-    end
-    set_silent(model)
-    vars, params = build_model(model)
-    optimize!(model)
-
-    cons = get_constraint_refs(model)
-    lb_cons, ub_cons = get_bound_constraint_refs(model)
-
-    DiffOpt.empty_input_sensitivities!(model)
-
-    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
-
-    DiffOpt.reverse_differentiate!(model)
-
-    params_list = params isa AbstractArray ? params : [params]
-    return [MOI.get(model, DiffOpt.ReverseConstraintSet(), ParameterRef(p)).value for p in params_list]
+    return _run_reverse(build_model; diffopt = true, dL_dx, dL_dy, dL_dzl, dL_dzu, optimizer, mad_opts...)
+end
+function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, mad_opts...)
+    return _run_reverse(build_model; diffopt = false, dL_dx, dL_dy, dL_dzl, dL_dzu, MadNLP.Optimizer, mad_opts...)
 end
 
 function get_param(params, param_idx)
@@ -166,12 +131,8 @@ end
 function get_problem_dims(build_model; optimizer=MadNLP.Optimizer, mad_opts...)
     model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
-    if get(mad_opts, :linear_solver, nothing) === CUDSSSolver
-        MOI.set(model, MOI.RawOptimizerAttribute("array_type"), CuVector{Float64})
-    end
     set_silent(model)
     vars, params = build_model(model)
-    # optimize!(model)
 
     cons = get_constraint_refs(model)
     lb_cons, ub_cons = get_bound_constraint_refs(model)

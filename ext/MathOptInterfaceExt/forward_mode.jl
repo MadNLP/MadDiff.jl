@@ -37,10 +37,11 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         dx_cpu = result.dx
         dy_cpu = result.dy
     else
-        Δp_gpu = Δp isa VT ? Δp : VT(Δp)
+        # TODO: pre-allocate
+        Δp_gpu = VT(Δp)
         result = MadDiff.forward_differentiate!(sens, Δp_gpu)
-        dx_cpu = result.dx isa Vector ? result.dx : Array(result.dx)
-        dy_cpu = result.dy isa Vector ? result.dy : Array(result.dy)
+        dx_cpu = Array(result.dx)
+        dy_cpu = Array(result.dy)
     end
 
     primal_vars = inner.param_var_order

@@ -118,9 +118,8 @@ const DX_TOL = 1e-6
 const DY_TOL = 1e-3  # TODO: investigate
 # (name, opts, dx_tol, dy_tol, skip_equality)
 const KKT_CONFIGS = [
-    ("Reuse", Dict{Symbol, Any}(), DX_TOL, DY_TOL, false),
-    ("ReuseSkip", Dict{Symbol, Any}(:skip_kkt_refactorization => true), DX_TOL, DY_TOL, false),
-    ("SparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseKKTSystem), DX_TOL, DY_TOL, false),
+    ("Default (SparseKKT)", Dict{Symbol, Any}(), DX_TOL, DY_TOL, false),
+    ("Default Skip (SparseKKT)", Dict{Symbol, Any}(:skip_kkt_refactorization => true), DX_TOL, DY_TOL, false),
     ("SparseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseCondensedKKTSystem, :bound_relax_factor => 1e-6), 5e-4, 5e-3, true),  # /!\ reduced tolerances for condensed
     ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, DY_TOL, false),
     ("ScaledSparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.ScaledSparseKKTSystem), DX_TOL, DY_TOL, false),
@@ -128,12 +127,16 @@ const KKT_CONFIGS = [
     ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
     ("NormalKKT", Dict{Symbol, Any}(:kkt_system => MadIPM.NormalKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
     ("HybridCondensedKKT", Dict{Symbol, Any}(:kkt_system => HybridKKT.HybridCondensedKKTSystem), 5e-4, 5e-3, false),  # /!\ reduced tolerances for condensed
-    # TODO: test MadIPM.Optimizer
+    # TODO: test MadIPM.Optimizer, MadNCL.Optimizer
 ]
 
 if HAS_CUDA
-    @info "Testing with CUDSS (reduced tolerances)"
-    push!(KKT_CONFIGS, ("CUDA", Dict{Symbol, Any}(:linear_solver => CUDSSSolver, :tol => 1e-8), 1e-4, 1e-2, false))
+    push!(KKT_CONFIGS, ("cuDSS (SparseCondensedKKT)", Dict{Symbol, Any}(
+        :linear_solver => CUDSSSolver,
+        :cudss_ir => 3,
+        :bound_relax_factor => 1e-7,
+        :tol => 1e-7
+    ), 1e-4, 1e-2, false))
 end
 
 const FV_CONFIGS = [
@@ -216,10 +219,6 @@ end
 end
 end
 end
-end
-
-if HAS_CUDA
-    include("cuda.jl")
 end
 
 #=
