@@ -18,11 +18,15 @@ MOI.get(m::Optimizer, ::DiffOpt.ForwardVariablePrimal, vi::MOI.VariableIndex) =
     MOI.get(m, MadDiff.ForwardVariablePrimal(), vi)
 MOI.get(m::Optimizer, ::DiffOpt.ForwardConstraintDual, ci::MOI.ConstraintIndex) =
     MOI.get(m, MadDiff.ForwardConstraintDual(), ci)
+MOI.get(m::Optimizer, ::DiffOpt.ForwardObjectiveSensitivity) =
+    MOI.get(m, MadDiff.ForwardObjectiveSensitivity())
 
 MOI.set(m::Optimizer, ::DiffOpt.ReverseVariablePrimal, vi::MOI.VariableIndex, value) =
     MOI.set(m, MadDiff.ReverseVariablePrimal(), vi, value)
 MOI.set(m::Optimizer, ::DiffOpt.ReverseConstraintDual, ci::MOI.ConstraintIndex, value) =
     MOI.set(m, MadDiff.ReverseConstraintDual(), ci, value)
+MOI.set(m::Optimizer, ::DiffOpt.ReverseObjectiveSensitivity, value) =
+    MOI.set(m, MadDiff.ReverseObjectiveSensitivity(), value)
 MOI.get(m::Optimizer, ::DiffOpt.ReverseConstraintSet, ci::MOI.ConstraintIndex) =
     MOI.get(m, MadDiff.ReverseConstraintSet(), ci)
 

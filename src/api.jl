@@ -72,7 +72,7 @@ end
 
 function reverse_differentiate!(
     sens::MadDiffSolver;
-    dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing,
+    dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing,
 )
-    return reverse_differentiate!(ReverseResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
+    return reverse_differentiate!(ReverseResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
 end

@@ -18,6 +18,15 @@ function MOI.set(
     return _clear_outputs!(model)  # keep KKT factorization
 end
 
+function MOI.set(
+        model::Optimizer{OT, T},
+        ::MadDiff.ReverseObjectiveSensitivity,
+        value::Real,
+    ) where {OT, T}
+    model.reverse.dobj = value
+    return _clear_outputs!(model)  # keep KKT factorization
+end
+
 function MadDiff.reverse_differentiate!(model::Optimizer)
     model.diff_time = @elapsed _reverse_differentiate_impl!(model)
     return nothing
@@ -92,10 +101,11 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     end
 
     dL_dy .*= -solver.cb.obj_sign
+    dobj = model.reverse.dobj
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
+        result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
         grad_p_cpu = result.grad_p
     else
         # TODO: pre-allocate
@@ -103,7 +113,7 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         dL_dy_gpu = VT(dL_dy)
         dL_dzl_gpu = VT(dL_dzl)
         dL_dzu_gpu = VT(dL_dzu)
-        result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu)
+        result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu, dobj)
         grad_p_cpu = Array(result.grad_p)
     end
 
