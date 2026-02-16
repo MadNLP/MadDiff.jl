@@ -23,7 +23,7 @@ solution = MadNLP.solve!(solver)
 diff = MadDiff.MadDiffSolver(solver)
 
 dL_dx, dL_dy, dL_dzl, dL_dzu = ...  # loss sensitivity vectors
-rev = MadDiff.reverse_differentiate!(diff; dL_dx, dL_dy, dL_dzl, dL_dzu)
+rev = MadDiff.vector_jacobian_product!(diff; dL_dx, dL_dy, dL_dzl, dL_dzu)
 rev.grad_p  # gradient of the loss with respect to the parameters
 ```
 
