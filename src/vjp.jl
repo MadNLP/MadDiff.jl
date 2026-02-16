@@ -43,7 +43,7 @@ function pack_vjp!(
     isnothing(dL_dzu) || pack_dzu!(cache.dL_dzu, cb, dL_dzu, cache.dzu_full)
 
     if !isnothing(dobj)
-        MadNLP._eval_grad_f_wrapper!(cb, variable(sens.solver.x), cache.grad_x)
+        _eval_grad_f_wrapper!(cb, variable(sens.solver.x), cache.grad_x)
         axpy!(dobj, cache.grad_x, cache.dL_dx)  # TODO: sense?
     end
 
