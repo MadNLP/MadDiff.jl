@@ -78,15 +78,20 @@ end
 function solve_jvp!(sens::MadDiffSolver{T}) where {T}
     cache = get_forward_cache!(sens)
     w = cache.kkt_rhs
+    assemble_jvp_rhs!(sens, w, cache)
+
+    _solve_with_refine!(sens, w, cache)
+    return nothing
+end
+
+function assemble_jvp_rhs!(sens::MadDiffSolver{T}, w, cache) where {T}
     n_x = length(cache.d2L_dxdp)
 
     fill!(full(w), zero(T))
     primal(w)[1:n_x] .= .-cache.d2L_dxdp
     dual(w) .= .-cache.dg_dp .+ sens.is_eq .* (cache.dlcon_dp .+ cache.ducon_dp) ./ 2
     jvp_set_bound_rhs!(sens.kkt, w, cache.dlvar_dp, cache.duvar_dp)
-
-    _solve_with_refine!(sens, w, cache)
-    return nothing
+    return w
 end
 
 function unpack_jvp!(result::ForwardResult, sens::MadDiffSolver, cache)

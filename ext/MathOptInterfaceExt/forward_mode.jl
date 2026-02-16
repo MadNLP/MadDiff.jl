@@ -49,7 +49,7 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         model.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
-    n_con = NLPModels.get_ncon(solver.nlp)
+    n_con = get_ncon(solver.nlp)
     obj_sign = solver.cb.obj_sign
     dy = _get_dy_cache!(model, n_con)
     dy .= (.-obj_sign) .* dy_cpu

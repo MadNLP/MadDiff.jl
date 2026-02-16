@@ -1,4 +1,5 @@
 zeros_like(cb, ::Type{T}, n::Int) where {T} = fill!(create_array(cb, T, n), zero(T))
+zeros_like(cb, ::Type{T}, n::Int, m::Int) where {T} = fill!(create_array(cb, T, n, m), zero(T))
 
 struct ForwardCache{VT, VK, PV}
     kkt_rhs::VK
@@ -25,8 +26,8 @@ end
 function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.forward_cache)
         cb = sens.solver.cb
-        n_x = NLPModels.get_nvar(sens.solver.nlp)
-        n_con = NLPModels.get_ncon(sens.solver.nlp)
+        n_x = get_nvar(sens.solver.nlp)
+        n_con = get_ncon(sens.solver.nlp)
         n_p = sens.n_p
         x_array = full(sens.solver.x)
         VT = typeof(x_array)
@@ -57,6 +58,41 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.forward_cache
 end
 
+function get_jacobian_forward_cache!(sens::MadDiffSolver{T}) where {T}
+    if isnothing(sens.jacobian_cache)
+        cb = sens.solver.cb
+        n_x = get_nvar(sens.solver.nlp)
+        n_con = get_ncon(sens.solver.nlp)
+        n_p = sens.n_p
+        n_var_cb = cb.nvar
+        n_ineq = length(cb.ind_ineq)
+        n_rhs = length(sens.kkt.pr_diag) + length(sens.kkt.du_diag) +
+            length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
+
+        sens.jacobian_cache = JacobianForwardCache(
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            spzeros(T, n_rhs, n_p),
+        )
+    end
+    return sens.jacobian_cache
+end
+
 struct ForwardResult{VT, T}
     dx::VT
     dy::VT
@@ -66,8 +102,8 @@ struct ForwardResult{VT, T}
 end
 
 function ForwardResult(sens::MadDiffSolver{T}) where {T}
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
-    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
     cb = sens.solver.cb
     return ForwardResult(
         zeros_like(cb, T, n_x),
@@ -98,8 +134,8 @@ end
 function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.reverse_cache)
         cb = sens.solver.cb
-        n_x = NLPModels.get_nvar(sens.solver.nlp)
-        n_con = NLPModels.get_ncon(sens.solver.nlp)
+        n_x = get_nvar(sens.solver.nlp)
+        n_con = get_ncon(sens.solver.nlp)
         n_p = sens.n_p
         x_array = full(sens.solver.x)
         VT = typeof(x_array)
@@ -132,9 +168,53 @@ struct ReverseResult{VT, GT}
     grad_p::GT
 end
 
+struct JacobianResult{MT, VT}
+    dx::MT
+    dy::MT
+    dzl::MT
+    dzu::MT
+    dobj::VT
+end
+
+struct JacobianTransposeResult{MT, VT}
+    dx::MT
+    dy::MT
+    dzl::MT
+    dzu::MT
+    dobj::VT
+end
+
+function JacobianResult(sens::MadDiffSolver{T}) where {T}
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
+    n_p = sens.n_p
+    cb = sens.solver.cb
+    return JacobianResult(
+        zeros_like(cb, T, n_x, n_p),
+        zeros_like(cb, T, n_con, n_p),
+        zeros_like(cb, T, n_x, n_p),
+        zeros_like(cb, T, n_x, n_p),
+        zeros_like(cb, T, n_p),
+    )
+end
+
+function JacobianTransposeResult(sens::MadDiffSolver{T}) where {T}
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
+    n_p = sens.n_p
+    cb = sens.solver.cb
+    return JacobianTransposeResult(
+        zeros_like(cb, T, n_p, n_x),
+        zeros_like(cb, T, n_p, n_con),
+        zeros_like(cb, T, n_p, n_x),
+        zeros_like(cb, T, n_p, n_x),
+        zeros_like(cb, T, n_p),
+    )
+end
+
 function ReverseResult(sens::MadDiffSolver{T}) where {T}
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
-    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
     cb = sens.solver.cb
     return ReverseResult(
         zeros_like(cb, T, n_x),

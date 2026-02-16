@@ -112,6 +112,8 @@ end
 end
 end
 
+include("test_jacobian.jl")
+
 include("problems.jl")
 
 const DX_TOL = 1e-6

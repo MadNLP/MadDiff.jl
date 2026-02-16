@@ -17,10 +17,10 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     AbstractCallback, SparseCallback, MakeParameter, create_array,
     @debug, @sprintf, _symv!
 
-const NLPModels = MadNLP.NLPModels
-import MadNLP.NLPModels: @lencheck
+import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
 import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
 import ParametricNLPModels
+import SparseArrays: spzeros
 
 include("packing.jl")
 include("adjoint.jl")
@@ -29,10 +29,13 @@ include("cache.jl")
 include("utils.jl")
 include("kkt.jl")
 include("forward.jl")
+include("jacobian_forward.jl")
 include("reverse.jl")
+include("jacobian_reverse.jl")
 
 export MadDiffSolver, MadDiffConfig
 export forward_differentiate!, reverse_differentiate!
+export forward_jacobian!, reverse_jacobian_transpose!
 export reset_sensitivity_cache!
 
 # implemented in MathOptInterfaceExt

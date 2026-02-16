@@ -20,8 +20,8 @@ function pack_vjp!(
     all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)) &&
         throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu, dobj must be provided"))
 
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
-    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
     isnothing(dL_dx) || @lencheck n_x dL_dx
     isnothing(dL_dy) || @lencheck n_con dL_dy
     isnothing(dL_dzl) || @lencheck n_x dL_dzl

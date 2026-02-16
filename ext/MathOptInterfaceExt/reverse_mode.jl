@@ -83,8 +83,8 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     sens = _get_sensitivity_solver!(model)
 
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
-    n_con = NLPModels.get_ncon(solver.nlp)
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(solver.nlp)
 
     dL_dx = _get_dL_dx!(model, n_x)
     for (vi, val) in model.reverse.primal_seeds
