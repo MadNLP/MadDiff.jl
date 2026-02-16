@@ -33,7 +33,7 @@ function _adjoint_scaled_kktmul!(
     return
 end
 
-function _adjoint_scaled_post!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
+function _adjoint_finish_bounds!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     dlb = dual_lb(w)
     dub = dual_ub(w)
     w.xp_lr .-= (kkt.l_lower ./ kkt.l_diag) .* dlb
@@ -43,7 +43,7 @@ function _adjoint_scaled_post!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     return
 end
 
-function _adjoint_scaled_pre!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
+function _adjoint_reduce_rhs!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     r3 = kkt.buffer1
     r4 = kkt.buffer2
     r3 .= w.xp
@@ -70,10 +70,10 @@ end
 #   zₚ += S gₚ
 #   gₗ += Dₗ⁻½ zₚ,    gᵤ += Dᵤ⁻½ zₚ
 function adjoint_solve_kkt_system!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
-    _adjoint_scaled_post!(kkt, w)
+    _adjoint_finish_bounds!(kkt, w)
     w.xp .*= kkt.scaling_factor
     solve_linear_system!(kkt.linear_solver, primal_dual(w))
-    _adjoint_scaled_pre!(kkt, w)
+    _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 

@@ -12,13 +12,13 @@ function adjoint_mul!(
     return w
 end
 
-function _adjoint_unreduced_post!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
+function _adjoint_finish_bounds!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
     dual_lb(w) .*= .-kkt.l_lower_aug
     dual_ub(w) .*= kkt.u_lower_aug
     return
 end
 
-function _adjoint_unreduced_pre!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
+function _adjoint_reduce_rhs!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
     f(x,y) = iszero(y) ? x : x/y
     wzl = dual_lb(w)
     wzu = dual_ub(w)
@@ -39,9 +39,9 @@ end
 #   K y = g
 #   gₗ = Dₗ⁻¹ gₗ, gᵤ = Dᵤ⁻¹ gᵤ
 function adjoint_solve_kkt_system!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
-    _adjoint_unreduced_post!(kkt, w)
+    _adjoint_finish_bounds!(kkt, w)
     solve_linear_system!(kkt.linear_solver, full(w))
-    _adjoint_unreduced_pre!(kkt, w)
+    _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 
