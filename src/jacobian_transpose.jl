@@ -46,30 +46,14 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + n_ub
 
-    dx_seed = view(tcache.dx_solved, :, r_dx)
-    dy_seed = view(tcache.dy_solved, :, r_dy)
-    dzl_seed = view(tcache.dzl_solved, :, r_dzl)
-    dzu_seed = view(tcache.dzu_solved, :, r_dzu)
+    id_x = spdiagm_like(cb, T, n_x)
+    id_con = spdiagm_like(cb, T, n_con)
 
-    fill!(dx_seed, zero(T))
-    fill!(dy_seed, zero(T))
-    fill!(dzl_seed, zero(T))
-    fill!(dzu_seed, zero(T))
+    pack_dx!(view(W, primal_seed_rows, r_dx), cb, id_x)
+    pack_dy!(view(W, dual_rows, r_dy), cb, id_con)
 
-    for i in 1:n_x
-        dx_seed[i, i] = one(T)
-        dzl_seed[i, i] = one(T)
-        dzu_seed[i, i] = one(T)
-    end
-    for i in 1:n_con
-        dy_seed[i, i] = one(T)
-    end
-
-    pack_dx!(view(W, primal_seed_rows, r_dx), cb, dx_seed)
-    pack_dy!(view(W, dual_rows, r_dy), cb, dy_seed)
-
-    pack_dzl!(view(W, lb_rows, r_dzl), cb, dzl_seed, view(tcache.dz_work, :, r_dzl))
-    pack_dzu!(view(W, ub_rows, r_dzu), cb, dzu_seed, view(tcache.dz_work, :, r_dzu))
+    pack_dzl!(view(W, lb_rows, r_dzl), cb, id_x, view(tcache.dz_work, :, r_dzl))
+    pack_dzu!(view(W, ub_rows, r_dzu), cb, id_x, view(tcache.dz_work, :, r_dzu))
 
     grad!(solver.nlp, tcache.x_nlp, tcache.grad_p)
     pack_dx!(view(W, primal_seed_rows, c_obj:c_obj), cb, reshape(tcache.grad_p, :, 1))

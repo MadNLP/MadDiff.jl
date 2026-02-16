@@ -185,7 +185,7 @@ function get_jac_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_con, n_p),
             zeros_like(cb, T, n_con, n_p),
             zeros_like(cb, T, n_var_cb + n_ineq, n_p),
-            spzeros(T, n_rhs, n_p),  # NOTE: we build the RHS sparse
+            spzeros_like(cb, T, n_rhs, n_p),  # NOTE: we build the RHS sparse
         )
     end
     return sens.jac_cache
@@ -274,7 +274,7 @@ function get_jact_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_con, n_seed),
             zeros_like(cb, T, n_con, n_seed),
             zeros_like(cb, T, n_p, n_seed),
-            spzeros(T, n_rhs, n_seed),
+            spzeros_like(cb, T, n_rhs, n_seed),
         )
     end
     return sens.jact_cache

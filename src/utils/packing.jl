@@ -1,3 +1,28 @@
+function spzeros_like(cb, ::Type{T}, n::Int, m::Int) where {T}
+    colptr = create_array(cb, Int32, m + 1)
+    rowval = create_array(cb, Int32, 0)
+    nzval = create_array(cb, T, 0)
+    fill!(colptr, one(Int32))
+    return MadNLP._get_sparse_csc((n, m), colptr, rowval, nzval)
+end
+
+function spdiagm_like(cb, diag::AbstractVector{T}) where {T}
+    n = length(diag)
+    colptr = create_array(cb, Int32, n + 1)
+    rowval = create_array(cb, Int32, n)
+    nzval = create_array(cb, T, n)
+    colptr .= Int32.(1:n+1)
+    rowval .= Int32.(1:n)
+    nzval .= diag
+    return MadNLP._get_sparse_csc((n, n), colptr, rowval, nzval)
+end
+
+function spdiagm_like(cb, ::Type{T}, n::Int) where {T}
+    diag = create_array(cb, T, n)
+    fill!(diag, one(T))
+    return spdiagm_like(cb, diag)
+end
+
 function unpack_dx!(x_full, cb::AbstractCallback, x)
     x_full .= x[1:cb.nvar]
 end
