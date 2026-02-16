@@ -8,7 +8,6 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 ParametricNLPModels = "1ff82034-6bb8-44a0-b51b-5c1bd563924f"
-SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [weakdeps]
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"

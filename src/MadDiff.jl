@@ -24,7 +24,6 @@ import ParametricNLPModels: hpprod!, jpprod!,
                             hptprod!, jptprod!,
                             lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
 import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
-import SparseArrays: spzeros, spdiagm
 
 include("utils/packing.jl")
 include("utils/batch_packing.jl")

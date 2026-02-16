@@ -10,14 +10,6 @@ function MadDiffSolver(solver::NCLSolver; kwargs...)
     return MadDiffSolver(solver.ipm; kwargs...)
 end
 
-function forward_differentiate!(solver::NCLSolver; kwargs...)
-    return forward_differentiate!(solver.ipm; kwargs...)
-end
-
-function reverse_differentiate!(solver::NCLSolver; kwargs...)
-    return reverse_differentiate!(solver.ipm; kwargs...)
-end
-
 function _adjoint_finish_bounds!(kkt::K1sAuglagKKTSystem, w::AbstractKKTVector)
     dlb = dual_lb(w)
     dub = dual_ub(w)
