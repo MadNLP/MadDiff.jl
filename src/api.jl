@@ -7,26 +7,6 @@ Base.@kwdef mutable struct MadDiffConfig
     skip_kkt_refactorization::Bool = false
 end
 
-struct JacobianCache{VT, MT, WM}
-    x_nlp::VT
-    y_nlp::VT
-    grad_x::VT
-    grad_p::VT
-    hpv_nlp::MT
-    jpv_nlp::MT
-    dlvar_nlp::MT
-    duvar_nlp::MT
-    dlcon_nlp::MT
-    ducon_nlp::MT
-    d2L_dxdp::MT
-    dg_dp::MT
-    dlvar_dp::MT
-    duvar_dp::MT
-    dlcon_dp::MT
-    ducon_dp::MT
-    dz_work::MT
-    W::WM
-end
 
 function _needs_new_kkt(config)
     return !isnothing(config.kkt_system) ||
@@ -39,7 +19,7 @@ mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
     Solver <: AbstractMadNLPSolver{T},
-    VB, FC, RC, JC
+    VB, FC, RC, JC, TC
 }
     solver::Solver
     config::MadDiffConfig
@@ -49,6 +29,7 @@ mutable struct MadDiffSolver{
     jvp_cache::Union{Nothing, FC}
     vjp_cache::Union{Nothing, RC}
     jac_cache::Union{Nothing, JC}
+    jact_cache::Union{Nothing, TC}
 end
 
 function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig()) where {T}
@@ -78,9 +59,10 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     FC = JVPCache{VT, VK, PV}
     RC = VJPCache{VT, VK, PV}
     JC = JacobianCache{VT, MT, WM}
-    return MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC}(
+    TC = JacobianTransposeCache{VT, MT, WM}
+    return MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC}(
         solver, config, kkt, n_p, is_eq,
-        nothing, nothing, nothing,
+        nothing, nothing, nothing, nothing,
     )
 end
 
@@ -88,6 +70,7 @@ function reset_sensitivity_cache!(sens::MadDiffSolver)
     sens.jvp_cache = nothing
     sens.vjp_cache = nothing
     sens.jac_cache = nothing
+    sens.jact_cache = nothing
     sens.kkt = get_sensitivity_kkt(sens.solver, sens.config)
     return sens
 end

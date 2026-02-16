@@ -15,7 +15,7 @@
     for j in 1:sens.n_p
         dp = zeros(Float64, sens.n_p)
         dp[j] = 1.0
-        col = MadDiff.forward_differentiate!(sens, dp)
+        col = MadDiff.jacobian_vector_product!(sens, dp)
         @test isapprox(col.dx, jac.dx[:, j]; atol=1e-8)
         @test isapprox(col.dy, jac.dy[:, j]; atol=1e-8)
         @test isapprox(col.dzl, jac.dzl[:, j]; atol=1e-8)
@@ -52,7 +52,7 @@ end
     for j in 1:sens.n_p
         dp = zeros(Float64, sens.n_p)
         dp[j] = 1.0
-        col = MadDiff.forward_differentiate!(sens, dp)
+        col = MadDiff.jacobian_vector_product!(sens, dp)
         @test isapprox(col.dx, jac.dx[:, j]; atol=1e-8)
         @test isapprox(col.dy, jac.dy[:, j]; atol=1e-8)
         @test isapprox(col.dzl, jac.dzl[:, j]; atol=1e-8)
@@ -71,32 +71,32 @@ end
         for i in 1:n_x
             dL_dx = zeros(Float64, n_x)
             dL_dx[i] = 1.0
-            row = MadDiff.reverse_differentiate!(sens; dL_dx)
+            row = MadDiff.vector_jacobian_product!(sens; dL_dx)
             @test isapprox(row.grad_p, jac.dx[:, i]; atol = atol)
         end
 
         for i in 1:n_con
             dL_dy = zeros(Float64, n_con)
             dL_dy[i] = 1.0
-            row = MadDiff.reverse_differentiate!(sens; dL_dy)
+            row = MadDiff.vector_jacobian_product!(sens; dL_dy)
             @test isapprox(row.grad_p, jac.dy[:, i]; atol = atol)
         end
 
         for i in 1:n_x
             dL_dzl = zeros(Float64, n_x)
             dL_dzl[i] = 1.0
-            row = MadDiff.reverse_differentiate!(sens; dL_dzl)
+            row = MadDiff.vector_jacobian_product!(sens; dL_dzl)
             @test isapprox(row.grad_p, jac.dzl[:, i]; atol = atol)
         end
 
         for i in 1:n_x
             dL_dzu = zeros(Float64, n_x)
             dL_dzu[i] = 1.0
-            row = MadDiff.reverse_differentiate!(sens; dL_dzu)
+            row = MadDiff.vector_jacobian_product!(sens; dL_dzu)
             @test isapprox(row.grad_p, jac.dzu[:, i]; atol = atol)
         end
 
-        row = MadDiff.reverse_differentiate!(sens; dobj = 1.0)
+        row = MadDiff.vector_jacobian_product!(sens; dobj = 1.0)
         @test isapprox(row.grad_p, jac.dobj; atol = atol)
     end
 
@@ -133,7 +133,7 @@ end
     _test_reverse_rows(sens_mp; atol = 1e-8)
 end
 
-@testset "jacobian_{forward,reverse}_consistency" begin
+@testset "jacobian vs jacobian_transpose" begin
     function _check_consistency(sens; atol = 1e-8)
         jf = MadDiff.jacobian!(sens)
         jr = MadDiff.jacobian_transpose!(sens)

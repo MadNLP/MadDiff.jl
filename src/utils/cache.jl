@@ -23,7 +23,7 @@ struct JVPCache{VT, VK, PV}
     grad_p::VT
 end
 
-function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
+function get_jvp_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.jvp_cache)
         cb = sens.solver.cb
         n_x = get_nvar(sens.solver.nlp)
@@ -58,40 +58,6 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.jvp_cache
 end
 
-function get_jacobian_cache!(sens::MadDiffSolver{T}) where {T}
-    if isnothing(sens.jac_cache)
-        cb = sens.solver.cb
-        n_x = get_nvar(sens.solver.nlp)
-        n_con = get_ncon(sens.solver.nlp)
-        n_p = sens.n_p
-        n_var_cb = cb.nvar
-        n_ineq = length(cb.ind_ineq)
-        n_rhs = length(sens.kkt.pr_diag) + length(sens.kkt.du_diag) +
-            length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
-
-        sens.jac_cache = JacobianCache(
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_p),
-            zeros_like(cb, T, n_x, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_x, n_p),
-            zeros_like(cb, T, n_x, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_var_cb, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
-            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_con, n_p),
-            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
-            spzeros(T, n_rhs, n_p),  # NOTE: we build the RHS sparse
-        )
-    end
-    return sens.jac_cache
-end
 
 struct JVPResult{VT, T}
     dx::VT
@@ -131,7 +97,7 @@ struct VJPCache{VT, VK, PV}
     grad_x::VT
 end
 
-function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
+function get_vjp_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.vjp_cache)
         cb = sens.solver.cb
         n_x = get_nvar(sens.solver.nlp)
@@ -168,6 +134,63 @@ struct VJPResult{VT, GT}
     grad_p::GT
 end
 
+
+struct JacobianCache{VT, MT, WM}
+    x_nlp::VT
+    y_nlp::VT
+    grad_x::VT
+    grad_p::VT
+    hess_nlp::MT
+    jac_nlp::MT
+    dlvar_nlp::MT
+    duvar_nlp::MT
+    dlcon_nlp::MT
+    ducon_nlp::MT
+    d2L_dxdp::MT
+    dg_dp::MT
+    dlvar_dp::MT
+    duvar_dp::MT
+    dlcon_dp::MT
+    ducon_dp::MT
+    dz_work::MT
+    W::WM
+end
+
+function get_jac_cache!(sens::MadDiffSolver{T}) where {T}
+    if isnothing(sens.jac_cache)
+        cb = sens.solver.cb
+        n_x = get_nvar(sens.solver.nlp)
+        n_con = get_ncon(sens.solver.nlp)
+        n_p = sens.n_p
+        n_var_cb = cb.nvar
+        n_ineq = length(cb.ind_ineq)
+        n_rhs = length(sens.kkt.pr_diag) + length(sens.kkt.du_diag) +
+            length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
+
+        sens.jac_cache = JacobianCache(
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_p),
+            spzeros(T, n_rhs, n_p),  # NOTE: we build the RHS sparse
+        )
+    end
+    return sens.jac_cache
+end
+
 struct JacobianResult{MT, VT}
     dx::MT
     dy::MT
@@ -176,12 +199,30 @@ struct JacobianResult{MT, VT}
     dobj::VT
 end
 
-struct JacobianTransposeResult{MT, VT}
-    dx::MT
-    dy::MT
-    dzl::MT
-    dzu::MT
-    dobj::VT
+struct JacobianTransposeCache{VT, MT, WM}
+    x_nlp::VT
+    y_nlp::VT
+    dy_nlp::MT
+    grad_p::VT
+    hess_nlp::MT
+    jac_nlp::MT
+    dlvar_nlp::MT
+    duvar_nlp::MT
+    dlcon_nlp::MT
+    ducon_nlp::MT
+    dx_solved::MT
+    dy_solved::MT
+    dzl_solved::MT
+    dzu_solved::MT
+    dz_work::MT
+    pv_lr::MT
+    pv_ur::MT
+    x_lr::MT
+    x_ur::MT
+    y_lr::MT
+    y_ur::MT
+    grad_all::MT
+    W::WM
 end
 
 function JacobianResult(sens::MadDiffSolver{T}) where {T}
@@ -196,6 +237,55 @@ function JacobianResult(sens::MadDiffSolver{T}) where {T}
         zeros_like(cb, T, n_x, n_p),
         zeros_like(cb, T, n_p),
     )
+end
+
+function get_jact_cache!(sens::MadDiffSolver{T}) where {T}
+    if isnothing(sens.jact_cache)
+        cb = sens.solver.cb
+        n_x = get_nvar(sens.solver.nlp)
+        n_con = get_ncon(sens.solver.nlp)
+        n_p = sens.n_p
+        n_var_cb = cb.nvar
+        n_ineq = length(cb.ind_ineq)
+        n_rhs = length(sens.kkt.pr_diag) + length(sens.kkt.du_diag) +
+            length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
+        n_seed = 3 * n_x + n_con + 1
+
+        sens.jact_cache = JacobianTransposeCache(
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_con, n_seed),
+            zeros_like(cb, T, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_x, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_con, n_p),
+            zeros_like(cb, T, n_x, n_seed),
+            zeros_like(cb, T, n_con, n_seed),
+            zeros_like(cb, T, n_x, n_seed),
+            zeros_like(cb, T, n_x, n_seed),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_seed),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_seed),
+            zeros_like(cb, T, n_var_cb + n_ineq, n_seed),
+            zeros_like(cb, T, n_x, n_seed),
+            zeros_like(cb, T, n_x, n_seed),
+            zeros_like(cb, T, n_con, n_seed),
+            zeros_like(cb, T, n_con, n_seed),
+            zeros_like(cb, T, n_p, n_seed),
+            spzeros(T, n_rhs, n_seed),
+        )
+    end
+    return sens.jact_cache
+end
+
+struct JacobianTransposeResult{MT, VT}
+    dx::MT
+    dy::MT
+    dzl::MT
+    dzu::MT
+    dobj::VT
 end
 
 function JacobianTransposeResult(sens::MadDiffSolver{T}) where {T}

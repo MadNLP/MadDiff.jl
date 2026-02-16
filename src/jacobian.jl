@@ -5,8 +5,8 @@ function pack_jacobian!(sens::MadDiffSolver{T}, jcache) where {T}
     n_var_cb = size(jcache.d2L_dxdp, 1)
     n_ineq = length(cb.ind_ineq)
 
-    pack_hess!(jcache.d2L_dxdp, cb, jcache.hpv_nlp)
-    pack_cons!(jcache.dg_dp, cb, jcache.jpv_nlp)
+    pack_hess!(jcache.d2L_dxdp, cb, jcache.hess_nlp)
+    pack_cons!(jcache.dg_dp, cb, jcache.jac_nlp)
     pack_cons!(jcache.dlcon_dp, cb, jcache.dlcon_nlp)
     pack_cons!(jcache.ducon_dp, cb, jcache.ducon_nlp)
     @views pack_dx!(jcache.dlvar_dp[1:n_var_cb, :], cb, jcache.dlvar_nlp)
@@ -95,15 +95,15 @@ function jacobian!(result::JacobianResult, sens::MadDiffSolver{T}) where {T}
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
-    jcache = get_jacobian_cache!(sens)
+    jcache = get_jac_cache!(sens)
     x = jcache.x_nlp
     y = jcache.y_nlp
 
     unpack_x!(x, cb, variable(solver.x))
     unpack_y!(y, cb, solver.y)
 
-    hess_param!(nlp, x, y, jcache.hpv_nlp; obj_weight = cb.obj_sign)
-    jac_param!(nlp, x, jcache.jpv_nlp)
+    hess_param!(nlp, x, y, jcache.hess_nlp; obj_weight = cb.obj_sign)
+    jac_param!(nlp, x, jcache.jac_nlp)
     lvar_jac_param!(nlp, jcache.dlvar_nlp)
     uvar_jac_param!(nlp, jcache.duvar_nlp)
     lcon_jac_param!(nlp, jcache.dlcon_nlp)

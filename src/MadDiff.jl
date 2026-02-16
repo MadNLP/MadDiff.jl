@@ -27,6 +27,7 @@ import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
 import SparseArrays: spzeros
 
 include("utils/packing.jl")
+include("utils/batch_packing.jl")
 include("KKT/adjoint.jl")
 include("KKT/Sparse/augmented.jl")
 include("KKT/Sparse/scaled_augmented.jl")

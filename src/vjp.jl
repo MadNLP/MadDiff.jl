@@ -27,7 +27,7 @@ function pack_vjp!(
     isnothing(dL_dzl) || @lencheck n_x dL_dzl
     isnothing(dL_dzu) || @lencheck n_x dL_dzu
 
-    cache = get_reverse_cache!(sens)
+    cache = get_vjp_cache!(sens)
     cb = sens.solver.cb
 
     fill!(cache.dL_dx, zero(T))
@@ -51,7 +51,7 @@ function pack_vjp!(
 end
 
 function solve_vjp!(sens::MadDiffSolver{T}) where {T}
-    cache = get_reverse_cache!(sens)
+    cache = get_vjp_cache!(sens)
     w = cache.kkt_rhs
     n_x = length(cache.dL_dx)
 
@@ -66,7 +66,7 @@ function solve_vjp!(sens::MadDiffSolver{T}) where {T}
 end
 
 function unpack_vjp!(result::VJPResult, sens::MadDiffSolver)
-    cache = get_reverse_cache!(sens)
+    cache = get_vjp_cache!(sens)
     cb = sens.solver.cb
     w = cache.kkt_rhs
 
@@ -97,7 +97,7 @@ function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing
     solver = sens.solver
     nlp = solver.nlp
     cb = solver.cb
-    cache = get_reverse_cache!(sens)
+    cache = get_vjp_cache!(sens)
     w = cache.kkt_rhs
     x = cache.x_nlp
     y = cache.y_nlp

@@ -4,7 +4,7 @@ function jacobian_vector_product!(
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
-    cache = get_forward_cache!(sens)
+    cache = get_jvp_cache!(sens)
 
     unpack_x!(cache.x_nlp, cb, variable(solver.x))
     unpack_y!(cache.y_nlp, cb, solver.y)
@@ -76,7 +76,7 @@ function jvp_set_bound_rhs!(::AbstractUnreducedKKTSystem, w, dlvar_dp, duvar_dp)
 end
 
 function solve_jvp!(sens::MadDiffSolver{T}) where {T}
-    cache = get_forward_cache!(sens)
+    cache = get_jvp_cache!(sens)
     w = cache.kkt_rhs
     assemble_jvp_rhs!(sens, w, cache)
 
