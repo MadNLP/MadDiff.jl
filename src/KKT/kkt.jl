@@ -122,7 +122,7 @@ function multi_solve_kkt_system!(kkt::AbstractKKTSystem, W::AbstractMatrix)
 
     for j in axes(W, 2)
         copyto!(full(rhs), 1, W, (j - 1) * n + 1, n)
-        solve_kkt_system!(kkt, rhs)
+        solve_kkt_system!(kkt, rhs)  # NOTE: no IR in multi_solve
         copyto!(W, (j - 1) * n + 1, full(rhs), 1, n)
     end
     return W
