@@ -38,14 +38,14 @@ end
 #   gₗ = -Dₗ gₗ,  gᵤ = Dᵤ gᵤ
 #   K y = g
 #   gₗ = Dₗ⁻¹ gₗ, gᵤ = Dᵤ⁻¹ gᵤ
-function adjoint_solve_kkt_system!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::SparseUnreducedKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     solve_linear_system!(kkt.linear_solver, full(w))
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 
-function adjoint_solve_kkt_system!(
+function adjoint_solve_kkt!(
     kkt::SparseUnreducedKKTSystem{T, VT, MT, QN},
     w::AbstractKKTVector
     ) where {T, VT, MT, QN<:CompactLBFGS}

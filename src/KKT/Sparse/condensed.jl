@@ -76,14 +76,14 @@ end
 #   g_x += J g_buf2, g_x = K_cond⁻¹ g_x
 #   g_buf += Jᵀ g_x
 #   g_z += D g_buf, g_s += Σₛ⁻¹ D g_buf
-function adjoint_solve_kkt_system!(kkt::SparseCondensedKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::SparseCondensedKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_condensed_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 
-function adjoint_solve_kkt_system!(
+function adjoint_solve_kkt!(
     kkt::SparseCondensedKKTSystem{T, VT, MT, QN},
     w::AbstractKKTVector
     ) where {T, VT, MT, QN<:CompactLBFGS}

@@ -27,7 +27,7 @@ function adjoint_mul!(
     return w
 end
 
-function adjoint_solve_kkt_system!(kkt::DenseKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::DenseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     solve_linear_system!(kkt.linear_solver, primal_dual(w))
     _adjoint_reduce_rhs!(kkt, w)

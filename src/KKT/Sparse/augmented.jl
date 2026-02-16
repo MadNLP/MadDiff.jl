@@ -25,14 +25,14 @@ end
 #   gₗ = -Dₗ⁻¹ gₗ,   gᵤ =  Dᵤ⁻¹ gᵤ
 #   K_red y = [gₚ; g_d]
 #   gₗ += -Dₗ⁻¹ yₗ,  gᵤ += -Dᵤ⁻¹ yᵤ
-function adjoint_solve_kkt_system!(kkt::SparseKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::SparseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     solve_linear_system!(kkt.linear_solver, primal_dual(w))
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 
-function adjoint_solve_kkt_system!(
+function adjoint_solve_kkt!(
     kkt::SparseKKTSystem{T, VT, MT, QN},
     w::AbstractKKTVector
     ) where {T, VT, MT, QN<:CompactLBFGS}

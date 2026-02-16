@@ -6,7 +6,7 @@ import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve_linear_s
 import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
 import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim,
                 _solve_with_refine!, _adjoint_solve_with_refine!,
-                adjoint_solve_kkt_system!, adjoint_mul!,
+                adjoint_solve_kkt!, adjoint_mul!,
                 _adjoint_kktmul!, _adjoint_finish_bounds!, _adjoint_reduce_rhs!
 
 function _adjoint_normal_solve!(kkt::NormalKKTSystem{T}, w::AbstractKKTVector) where {T}
@@ -29,7 +29,7 @@ function _adjoint_normal_solve!(kkt::NormalKKTSystem{T}, w::AbstractKKTVector) w
     return
 end
 
-function adjoint_solve_kkt_system!(kkt::NormalKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::NormalKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_normal_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)
@@ -74,7 +74,7 @@ end
 #     w::AbstractKKTVector,
 #     cache,
 # ) where {T, KKT, VI, VB, FC, RC, F}
-#     adjoint_solve_kkt_system!(sens.kkt, w)
+#     adjoint_solve_kkt!(sens.kkt, w)
 #     return nothing
 # end
 

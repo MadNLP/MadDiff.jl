@@ -69,7 +69,7 @@ end
 #   gₗ = Dₗ⁻¹ gₗ,     gᵤ = -Dᵤ⁻¹ gᵤ
 #   zₚ += S gₚ
 #   gₗ += Dₗ⁻½ zₚ,    gᵤ += Dᵤ⁻½ zₚ
-function adjoint_solve_kkt_system!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     w.xp .*= kkt.scaling_factor
     solve_linear_system!(kkt.linear_solver, primal_dual(w))
@@ -77,7 +77,7 @@ function adjoint_solve_kkt_system!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVec
     return w
 end
 
-function adjoint_solve_kkt_system!(
+function adjoint_solve_kkt!(
     kkt::ScaledSparseKKTSystem{T, VT, MT, QN},
     w::AbstractKKTVector
     ) where {T, VT, MT, QN<:CompactLBFGS}

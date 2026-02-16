@@ -1,16 +1,16 @@
-function adjoint_solve_kkt_system! end
+function adjoint_solve_kkt! end
 
-function adjoint_multi_solve_kkt_system! end
+function adjoint_multi_solve_kkt! end
 
 function adjoint_mul! end
 
-function adjoint_multi_solve_kkt_system!(kkt::AbstractKKTSystem, W::AbstractMatrix)
+function adjoint_multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractMatrix)
     # TODO: sparse input dense output
     rhs = UnreducedKKTVector(kkt)
     n = length(full(rhs))
     for j in axes(W, 2)
         copyto!(full(rhs), 1, W, (j - 1) * n + 1, n)
-        adjoint_solve_kkt_system!(kkt, rhs)
+        adjoint_solve_kkt!(kkt, rhs)
         copyto!(W, (j - 1) * n + 1, full(rhs), 1, n)
     end
     return W
@@ -91,7 +91,7 @@ function adjoint_solve_refine!(
         iterator.cnt.ir = 0
 
         while true
-            adjoint_solve_kkt_system!(iterator.kkt, w)
+            adjoint_solve_kkt!(iterator.kkt, w)
             axpy!(1., full(w), full(x))
             copyto!(full(w), full(b))
 

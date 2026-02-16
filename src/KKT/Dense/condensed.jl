@@ -50,7 +50,7 @@ function _adjoint_dense_condensed_solve!(kkt::DenseCondensedKKTSystem{T}, w::Abs
     return
 end
 
-function adjoint_solve_kkt_system!(kkt::DenseCondensedKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt!(kkt::DenseCondensedKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_dense_condensed_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)

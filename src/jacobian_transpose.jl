@@ -61,7 +61,7 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
 end
 
 function solve_jacobian_transpose!(sens::MadDiffSolver, tcache)
-    adjoint_multi_solve_kkt_system!(sens.kkt, tcache.W)
+    adjoint_multi_solve_kkt!(sens.kkt, tcache.W)
     return nothing
 end
 
