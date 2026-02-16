@@ -83,8 +83,8 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     sens = _get_sensitivity_solver!(model)
 
-    n_x = get_nvar(sens.solver.nlp)
-    n_con = get_ncon(solver.nlp)
+    n_x = NLPModels.get_nvar(sens.solver.nlp)
+    n_con = NLPModels.get_ncon(solver.nlp)
 
     dL_dx = _get_dL_dx!(model, n_x)
     for (vi, val) in model.reverse.primal_seeds
@@ -105,7 +105,7 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.reverse_differentiate!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
+        result = MadDiff.vector_jacobian_product!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
         grad_p_cpu = result.grad_p
     else
         # TODO: pre-allocate
@@ -113,7 +113,7 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         dL_dy_gpu = VT(dL_dy)
         dL_dzl_gpu = VT(dL_dzl)
         dL_dzu_gpu = VT(dL_dzu)
-        result = MadDiff.reverse_differentiate!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu, dobj)
+        result = MadDiff.vector_jacobian_product!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu, dobj)
         grad_p_cpu = Array(result.grad_p)
     end
 

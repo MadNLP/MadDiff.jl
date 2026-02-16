@@ -213,7 +213,7 @@ function _run_adjoint_tests(KKTSystem, Callback)
     x = copy(w)
     y = copy(v)
     MadNLP.solve_kkt_system!(kkt, x)
-    MadDiff.adjoint_solve!(kkt, y)
+    MadDiff.adjoint_solve_kkt_system!(kkt, y)
     @test dot(v, x) ≈ dot(y, w) atol=1e-8
 
     x = MadNLP.UnreducedKKTVector(kkt)

@@ -7,7 +7,7 @@ Base.@kwdef mutable struct MadDiffConfig
     skip_kkt_refactorization::Bool = false
 end
 
-struct JacobianForwardCache{VT, MT, WM}
+struct JacobianCache{VT, MT, WM}
     x_nlp::VT
     y_nlp::VT
     grad_x::VT
@@ -46,9 +46,9 @@ mutable struct MadDiffSolver{
     kkt::KKT
     n_p::Int
     is_eq::VB
-    forward_cache::Union{Nothing, FC}
-    reverse_cache::Union{Nothing, RC}
-    jacobian_cache::Union{Nothing, JC}
+    jvp_cache::Union{Nothing, FC}
+    vjp_cache::Union{Nothing, RC}
+    jac_cache::Union{Nothing, JC}
 end
 
 function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig()) where {T}
@@ -75,9 +75,9 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     WM = typeof(spzeros(T, 0, 0))
     VK = UnreducedKKTVector{T,VT,VI}
     PV = PrimalVector{T,VT,VI}
-    FC = ForwardCache{VT, VK, PV}
-    RC = ReverseCache{VT, VK, PV}
-    JC = JacobianForwardCache{VT, MT, WM}
+    FC = JVPCache{VT, VK, PV}
+    RC = VJPCache{VT, VK, PV}
+    JC = JacobianCache{VT, MT, WM}
     return MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC}(
         solver, config, kkt, n_p, is_eq,
         nothing, nothing, nothing,
@@ -85,27 +85,27 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
 end
 
 function reset_sensitivity_cache!(sens::MadDiffSolver)
-    sens.forward_cache = nothing
-    sens.reverse_cache = nothing
-    sens.jacobian_cache = nothing
+    sens.jvp_cache = nothing
+    sens.vjp_cache = nothing
+    sens.jac_cache = nothing
     sens.kkt = get_sensitivity_kkt(sens.solver, sens.config)
     return sens
 end
 
-function forward_differentiate!(sens::MadDiffSolver, Δp::AbstractVector)
-    return forward_differentiate!(ForwardResult(sens), sens, Δp)
+function jacobian_vector_product!(sens::MadDiffSolver, Δp::AbstractVector)
+    return jacobian_vector_product!(JVPResult(sens), sens, Δp)
 end
 
-function reverse_differentiate!(
+function vector_jacobian_product!(
     sens::MadDiffSolver;
     dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing,
 )
-    return reverse_differentiate!(ReverseResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
+    return vector_jacobian_product!(VJPResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
 end
 
-function forward_jacobian!(sens::MadDiffSolver)
-    forward_jacobian!(JacobianResult(sens), sens)
+function jacobian!(sens::MadDiffSolver)
+    jacobian!(JacobianResult(sens), sens)
 end
-function reverse_jacobian_transpose!(sens::MadDiffSolver)
-    reverse_jacobian_transpose!(JacobianTransposeResult(sens), sens)
+function jacobian_transpose!(sens::MadDiffSolver)
+    jacobian_transpose!(JacobianTransposeResult(sens), sens)
 end

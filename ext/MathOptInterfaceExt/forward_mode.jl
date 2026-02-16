@@ -33,13 +33,13 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     VT = typeof(solver.y)
     if VT <: Vector
-        result = MadDiff.forward_differentiate!(sens, Δp)
+        result = MadDiff.jacobian_vector_product!(sens, Δp)
         dx_cpu = result.dx
         dy_cpu = result.dy
     else
         # TODO: pre-allocate
         Δp_gpu = VT(Δp)
-        result = MadDiff.forward_differentiate!(sens, Δp_gpu)
+        result = MadDiff.jacobian_vector_product!(sens, Δp_gpu)
         dx_cpu = Array(result.dx)
         dy_cpu = Array(result.dy)
     end
@@ -49,7 +49,7 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         model.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
-    n_con = get_ncon(solver.nlp)
+    n_con = NLPModels.get_ncon(solver.nlp)
     obj_sign = solver.cb.obj_sign
     dy = _get_dy_cache!(model, n_con)
     dy .= (.-obj_sign) .* dy_cpu

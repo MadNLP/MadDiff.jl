@@ -1,7 +1,7 @@
 module MadNCLExt
 
 import MadDiff
-import MadDiff: adjoint_solve!, adjoint_mul!, _adjoint_kktmul!, MadDiffSolver, forward_differentiate!, reverse_differentiate!
+import MadDiff: adjoint_solve_kkt_system!, adjoint_mul!, _adjoint_kktmul!, MadDiffSolver, forward_differentiate!, reverse_differentiate!
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, full, solve_linear_system!, _symv!
 import MadNCL: NCLSolver, K1sAuglagKKTSystem, K2rAuglagKKTSystem, symul!
 import LinearAlgebra: mul!
@@ -158,14 +158,14 @@ function _adjoint_k2r_solve!(kkt::K2rAuglagKKTSystem{T}, w::AbstractKKTVector) w
     return
 end
 
-function adjoint_solve!(kkt::K1sAuglagKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt_system!(kkt::K1sAuglagKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_k1s_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
 
-function adjoint_solve!(kkt::K2rAuglagKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt_system!(kkt::K2rAuglagKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_k2r_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)

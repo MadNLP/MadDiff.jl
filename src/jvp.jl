@@ -1,5 +1,5 @@
-function forward_differentiate!(
-    result::ForwardResult, sens::MadDiffSolver{T}, Δp::AbstractVector,
+function jacobian_vector_product!(
+    result::JVPResult, sens::MadDiffSolver{T}, Δp::AbstractVector,
 ) where {T}
     solver = sens.solver
     cb = solver.cb
@@ -12,12 +12,12 @@ function forward_differentiate!(
     x = cache.x_nlp
     y = cache.y_nlp
 
-    ParametricNLPModels.hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
-    ParametricNLPModels.jpprod!(nlp, x, Δp, cache.jpv_nlp)
-    ParametricNLPModels.lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
-    ParametricNLPModels.uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
-    ParametricNLPModels.lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
-    ParametricNLPModels.ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
+    hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
+    jpprod!(nlp, x, Δp, cache.jpv_nlp)
+    lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
+    uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
+    lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
+    ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
 
     pack_jvp!(sens, cache)
     solve_jvp!(sens)
@@ -29,14 +29,14 @@ function forward_differentiate!(
 end
 
 function compute_objective_sensitivity!(
-    result::ForwardResult, sens::MadDiffSolver{T}, cache, Δp::AbstractVector,
+    result::JVPResult, sens::MadDiffSolver{T}, cache, Δp::AbstractVector,
 ) where {T}
     solver = sens.solver
     nlp = solver.nlp
     x = cache.x_nlp
 
-    NLPModels.grad!(nlp, x, cache.grad_x)
-    ParametricNLPModels.grad_param!(nlp, x, cache.grad_p)
+    grad!(nlp, x, cache.grad_x)
+    grad_param!(nlp, x, cache.grad_p)
 
     result.dobj[] = dot(cache.grad_x, result.dx) + dot(cache.grad_p, Δp)
 
@@ -94,7 +94,7 @@ function assemble_jvp_rhs!(sens::MadDiffSolver{T}, w, cache) where {T}
     return w
 end
 
-function unpack_jvp!(result::ForwardResult, sens::MadDiffSolver, cache)
+function unpack_jvp!(result::JVPResult, sens::MadDiffSolver, cache)
     cb = sens.solver.cb
     w = cache.kkt_rhs
 

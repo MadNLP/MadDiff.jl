@@ -18,28 +18,40 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     @debug, @sprintf, _symv!
 
 import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
+import ParametricNLPModels: hpprod!, jpprod!,
+                            lvar_jpprod!, uvar_jpprod!, lcon_jpprod!, ucon_jpprod!,
+                            grad_param!, hess_param!, jac_param!, lvar_jac_param!, uvar_jac_param!, lcon_jac_param!, ucon_jac_param!,
+                            hptprod!, jptprod!,
+                            lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
 import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
-import ParametricNLPModels
 import SparseArrays: spzeros
 
-include("packing.jl")
-include("adjoint.jl")
+include("utils/packing.jl")
+include("KKT/adjoint.jl")
+include("KKT/Sparse/augmented.jl")
+include("KKT/Sparse/scaled_augmented.jl")
+include("KKT/Sparse/unreduced.jl")
+include("KKT/Sparse/condensed.jl")
+include("KKT/Dense/augmented.jl")
+include("KKT/Dense/condensed.jl")
 include("api.jl")
-include("cache.jl")
-include("utils.jl")
-include("kkt.jl")
-include("forward.jl")
-include("jacobian_forward.jl")
-include("reverse.jl")
-include("jacobian_reverse.jl")
+include("utils/cache.jl")
+include("utils/utils.jl")
+include("KKT/kkt.jl")
+include("jvp.jl")
+include("jacobian.jl")
+include("vjp.jl")
+include("jacobian_transpose.jl")
 
 export MadDiffSolver, MadDiffConfig
-export forward_differentiate!, reverse_differentiate!
-export forward_jacobian!, reverse_jacobian_transpose!
+export jacobian_vector_product!, vector_jacobian_product!
+export jacobian!, jacobian_transpose!
 export reset_sensitivity_cache!
 
 # implemented in MathOptInterfaceExt
 function diff_optimizer end
+function forward_differentiate! end
+function reverse_differentiate! end
 function empty_input_sensitivities! end
 function nonlinear_diff_model end
 function get_reverse_parameter end

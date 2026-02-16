@@ -1,7 +1,7 @@
 module HybridKKTExt
 
 import MadDiff
-import MadDiff: adjoint_solve!, adjoint_mul!, _adjoint_kktmul!
+import MadDiff: adjoint_solve_kkt_system!, adjoint_mul!, _adjoint_kktmul!
 import MadNLP: AbstractKKTVector, _madnlp_unsafe_wrap, dual_lb, dual_ub, full, solve_linear_system!
 
 import HybridKKT
@@ -103,7 +103,7 @@ function _adjoint_hybrid_solve!(kkt::HybridCondensedKKTSystem{T}, w::AbstractKKT
     return
 end
 
-function adjoint_solve!(kkt::HybridCondensedKKTSystem, w::AbstractKKTVector)
+function adjoint_solve_kkt_system!(kkt::HybridCondensedKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     _adjoint_hybrid_solve!(kkt, w)
     _adjoint_reduce_rhs!(kkt, w)

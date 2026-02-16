@@ -83,31 +83,31 @@ function compute_jacobian_objective_sensitivity!(result::JacobianResult, sens::M
     x = jcache.x_nlp
     n_p = sens.n_p
 
-    NLPModels.grad!(nlp, x, jcache.grad_x)
-    ParametricNLPModels.grad_param!(nlp, x, jcache.grad_p)
+    grad!(nlp, x, jcache.grad_x)
+    grad_param!(nlp, x, jcache.grad_p)
     for j in 1:n_p
         result.dobj[j] = dot(jcache.grad_x, view(result.dx, :, j)) + jcache.grad_p[j]
     end
     return nothing
 end
 
-function jacobian_forward!(result::JacobianResult, sens::MadDiffSolver{T}) where {T}
+function jacobian!(result::JacobianResult, sens::MadDiffSolver{T}) where {T}
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
-    jcache = get_jacobian_forward_cache!(sens)
+    jcache = get_jacobian_cache!(sens)
     x = jcache.x_nlp
     y = jcache.y_nlp
 
     unpack_x!(x, cb, variable(solver.x))
     unpack_y!(y, cb, solver.y)
 
-    ParametricNLPModels.hess_param!(nlp, x, y, jcache.hpv_nlp; obj_weight = cb.obj_sign)
-    ParametricNLPModels.jac_param!(nlp, x, jcache.jpv_nlp)
-    ParametricNLPModels.lvar_jac!(nlp, jcache.dlvar_nlp)
-    ParametricNLPModels.uvar_jac!(nlp, jcache.duvar_nlp)
-    ParametricNLPModels.lcon_jac!(nlp, jcache.dlcon_nlp)
-    ParametricNLPModels.ucon_jac!(nlp, jcache.ducon_nlp)
+    hess_param!(nlp, x, y, jcache.hpv_nlp; obj_weight = cb.obj_sign)
+    jac_param!(nlp, x, jcache.jpv_nlp)
+    lvar_jac_param!(nlp, jcache.dlvar_nlp)
+    uvar_jac_param!(nlp, jcache.duvar_nlp)
+    lcon_jac_param!(nlp, jcache.dlcon_nlp)
+    ucon_jac_param!(nlp, jcache.ducon_nlp)
 
     pack_jacobian!(sens, jcache)
     solve_jacobian!(sens, jcache)

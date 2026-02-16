@@ -10,7 +10,7 @@
     optimize!(model)
 
     sens = MadDiff.MadDiffSolver(unsafe_backend(model).inner.solver)
-    jac = MadDiff.jacobian_forward(sens)
+    jac = MadDiff.jacobian!(sens)
 
     for j in 1:sens.n_p
         dp = zeros(Float64, sens.n_p)
@@ -47,7 +47,7 @@ end
     @test isapprox(value(x) + value(y) + value(z), value(p3); atol=1e-8)
 
     sens = MadDiff.MadDiffSolver(unsafe_backend(model).inner.solver)
-    jac = MadDiff.jacobian_forward(sens)
+    jac = MadDiff.jacobian!(sens)
 
     for j in 1:sens.n_p
         dp = zeros(Float64, sens.n_p)
@@ -62,9 +62,9 @@ end
 
 end
 
-@testset "jacobian_reverse" begin
+@testset "jacobian_transpose!" begin
     function _test_reverse_rows(sens; atol = 1e-8)
-        jac = MadDiff.jacobian_reverse(sens)
+        jac = MadDiff.jacobian_transpose!(sens)
         n_x = NLPModels.get_nvar(sens.solver.nlp)
         n_con = NLPModels.get_ncon(sens.solver.nlp)
 
@@ -135,8 +135,8 @@ end
 
 @testset "jacobian_{forward,reverse}_consistency" begin
     function _check_consistency(sens; atol = 1e-8)
-        jf = MadDiff.jacobian_forward(sens)
-        jr = MadDiff.jacobian_reverse(sens)
+        jf = MadDiff.jacobian!(sens)
+        jr = MadDiff.jacobian_transpose!(sens)
         @test isapprox(jr.dx, transpose(jf.dx); atol = atol)
         @test isapprox(jr.dy, transpose(jf.dy); atol = atol)
         @test isapprox(jr.dzl, transpose(jf.dzl); atol = atol)
