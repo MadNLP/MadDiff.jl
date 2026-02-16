@@ -36,6 +36,14 @@ function adjoint_solve_kkt!(
     kkt::SparseKKTSystem{T, VT, MT, QN},
     w::AbstractKKTVector
     ) where {T, VT, MT, QN<:CompactLBFGS}
+    error("Quasi-Newton approximation of the Hessian is not yet supported in MadDiff reverse mode.")
+end
+
+#=
+function adjoint_solve_kkt!(
+    kkt::SparseKKTSystem{T, VT, MT, QN},
+    w::AbstractKKTVector
+    ) where {T, VT, MT, QN<:CompactLBFGS}
 
     qn = kkt.quasi_newton
     n, p = size(qn)
@@ -93,3 +101,4 @@ function adjoint_solve_kkt!(
     _adjoint_reduce_rhs!(kkt, w)
     return w
 end
+=#

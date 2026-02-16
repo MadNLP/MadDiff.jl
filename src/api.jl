@@ -1,8 +1,8 @@
-Base.@kwdef mutable struct MadDiffConfig
+Base.@kwdef mutable struct MadDiffConfig{O}
     kkt_system::Union{Nothing, Type} = nothing
     kkt_options::Union{Nothing, Dict} = nothing
     linear_solver::Union{Nothing, Type} = nothing
-    linear_solver_options::Union{Nothing, Dict} = nothing
+    linear_solver_options::O = nothing
     reuse_kkt::Bool = true
     skip_kkt_refactorization::Bool = false
 end

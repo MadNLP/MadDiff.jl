@@ -137,7 +137,6 @@ function _resize_and_zero!(cache::Vector{T}, n::Int) where {T}
     return cache
 end
 
-_get_y_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.y_cache, n)
 _get_dy_cache!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dy_cache, n)
 _get_dL_dx!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dx, n)
 _get_dL_dy!(model::Optimizer, n::Int) = _resize_and_zero!(model.work.dL_dy, n)
