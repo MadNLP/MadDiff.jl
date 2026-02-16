@@ -15,7 +15,7 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     unpack_x!, unpack_y!, unpack_z!,
     eval_jac_wrapper!, eval_lag_hess_wrapper!,
     AbstractCallback, SparseCallback, MakeParameter, create_array,
-    @debug, @sprintf, _symv!
+    @debug, @sprintf, _symv!, _eval_grad_f_wrapper!, _get_sparse_csc
 
 import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
 import ParametricNLPModels: hpprod!, jpprod!,
