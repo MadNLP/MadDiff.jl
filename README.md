@@ -9,10 +9,10 @@ MadDiff implements forward and reverse mode implicit differentiation for MadSuit
 > [!WARNING]
 > MadDiff is a work-in-progress and requires installing [forks of several dependencies](https://github.com/klamike/MadDiff.jl/blob/0c79ad414321765b0a14aa6d6b4efd7c4d23d69b/test/Project.toml#L24-L31). Proceed with caution and verify correctness before use.
 
-## NLPModels API
+## NLPModels interface
 
 > [!NOTE]
-> The [NLPModels](https://github.com/JuliaSmoothOptimizers/NLPModels.jl) API requires that your `AbstractNLPModel` implementation includes the [`ParametricNLPModels`](https://github.com/klamike/ParametricNLPModels.jl/tree/mk/pnlpm) API. Currently, this is automated only for the case when using MadNLP through JuMP, but support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
+> The [NLPModels](https://github.com/JuliaSmoothOptimizers/NLPModels.jl) interface requires that your `AbstractNLPModel` implementation includes the [`ParametricNLPModels`](https://github.com/klamike/ParametricNLPModels.jl/tree/mk/pnlpm) API. Currently, this is automated only for the case when using MadNLP through JuMP, but support for ExaModels, ADNLPModels, and NLPModelsJuMP is planned.
 
 
 ```julia
@@ -27,7 +27,7 @@ rev = MadDiff.vector_jacobian_product!(diff; dL_dx, dL_dy, dL_dzl, dL_dzu)
 rev.grad_p  # gradient of the loss with respect to the parameters
 ```
 
-## DiffOpt API
+## JuMP interface
 
 MadDiff aims to be a drop-in replacement for [DiffOpt](https://github.com/jump-dev/DiffOpt.jl) with MadNLP. Simply switch `DiffOpt.diff_optimizer(MadNLP.Optimizer)` for `MadDiff.diff_optimizer(MadNLP.Optimizer)` and enjoy the speedup!
 
