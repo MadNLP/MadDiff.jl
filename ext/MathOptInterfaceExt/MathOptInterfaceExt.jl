@@ -9,22 +9,26 @@ mutable struct ForwardModeData{T}
     param_perturbations::Dict{MOI.ConstraintIndex, T}
     primal_sensitivities::Dict{MOI.VariableIndex, T}
     dual_sensitivities::Dict{MOI.ConstraintIndex, T}
+    objective_sensitivity::T
 end
 ForwardModeData{T}() where {T} = ForwardModeData{T}(
     Dict{MOI.ConstraintIndex, T}(),
     Dict{MOI.VariableIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
+    zero(T),
 )
 
 mutable struct ReverseModeData{T}
     primal_seeds::Dict{MOI.VariableIndex, T}
     dual_seeds::Dict{MOI.ConstraintIndex, T}
     param_outputs::Dict{MOI.ConstraintIndex, T}
+    dobj::Union{Nothing, T}
 end
 ReverseModeData{T}() where {T} = ReverseModeData{T}(
     Dict{MOI.VariableIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
+    nothing,
 )
 
 mutable struct WorkBuffers{T}

@@ -1,11 +1,12 @@
 function reverse_differentiate!(
     result::ReverseResult, sens::MadDiffSolver{T};
-    dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing,
+    dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing,
 ) where {T}
-    pack_vjp!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu)
+    pack_vjp!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
     solve_vjp!(sens)
     unpack_vjp!(result, sens)
-    return vjp_pullback!(result, sens)
+    vjp_pullback!(result, sens; dobj)
+    return result
 end
 
 function pack_vjp!(
@@ -14,9 +15,10 @@ function pack_vjp!(
     dL_dy = nothing,
     dL_dzl = nothing,
     dL_dzu = nothing,
+    dobj = nothing,
 ) where {T}
-    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu)) &&
-        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu must be provided"))
+    all(isnothing, (dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)) &&
+        throw(ArgumentError("At least one of dL_dx, dL_dy, dL_dzl, dL_dzu, dobj must be provided"))
 
     n_x = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(sens.solver.nlp)
@@ -39,6 +41,12 @@ function pack_vjp!(
     isnothing(dL_dy) || pack_dy!(cache.dL_dy, cb, dL_dy)
     isnothing(dL_dzl) || pack_dzl!(cache.dL_dzl, cb, dL_dzl, cache.dzl_full)
     isnothing(dL_dzu) || pack_dzu!(cache.dL_dzu, cb, dL_dzu, cache.dzu_full)
+
+    if !isnothing(dobj)
+        MadNLP._eval_grad_f_wrapper!(cb, variable(sens.solver.x), cache.grad_x)
+        axpy!(dobj, cache.grad_x, cache.dL_dx)  # TODO: sense?
+    end
+
     return nothing
 end
 
@@ -85,7 +93,7 @@ function vjp_fill_pv!(::AbstractUnreducedKKTSystem, pvl, pvu, w)
     return nothing
 end
 
-function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}) where {T}
+function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}; dobj = nothing) where {T}
     solver = sens.solver
     nlp = solver.nlp
     cb = solver.cb
@@ -109,6 +117,11 @@ function vjp_pullback!(result::ReverseResult, sens::MadDiffSolver{T}) where {T}
     unpack_y!(y, cb, solver.y)
     y .*= σ_scaled
     ParametricNLPModels.hptprod!(nlp, x, y, dx, grad_p; obj_weight = σ_scaled)
+
+    if !isnothing(dobj)
+        ParametricNLPModels.grad_param!(nlp, x, tmp)
+        axpy!(-dobj, tmp, grad_p)
+    end
     
     dy .= result.dy .* σ_scaled
     ParametricNLPModels.jptprod!(nlp, x, dy, tmp)

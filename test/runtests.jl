@@ -183,8 +183,8 @@ for prob_name in keys(PROBLEMS)
         rng = MersenneTwister(hash((kkt_name, fv_name, prob_name)))
         for pidx in 1:n_params
         dp = randn(rng)
-        (dx_mad, dy_mad, dzl_mad, dzu_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
-        (dx_diff, dy_diff, dzl_diff, dzu_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
+        (dx_mad, dy_mad, dzl_mad, dzu_mad, dobj_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
+        (dx_diff, dy_diff, dzl_diff, dzu_diff, dobj_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
 
         for (g1, g2) in zip(dx_mad, dx_diff)
             @test isapprox(g1, g2; atol=dx_atol, rtol)
@@ -198,6 +198,7 @@ for prob_name in keys(PROBLEMS)
         for (g1, g2) in zip(dzu_mad, dzu_diff)
             @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
+        @test isapprox(dobj_mad, dobj_diff; atol=dy_atol, rtol)
         end
     end
 
@@ -208,9 +209,10 @@ for prob_name in keys(PROBLEMS)
         dL_dy = randn(rng, n_con)
         dL_dzl = randn(rng, n_lb)
         dL_dzu = randn(rng, n_ub)
+        dobj = randn(rng)
 
-        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, opts...)
-        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, opts...)
+        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, opts...)
+        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, opts...)
         for (g1, g2) in zip(grad_mad, grad_diff)
             @test isapprox(g1, g2; atol=dy_atol, rtol)
         end

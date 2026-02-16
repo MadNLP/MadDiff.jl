@@ -56,6 +56,7 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dy)
     _store_bound_dual_sensitivities!(model, sens, result, inner)
+    model.forward.objective_sensitivity = result.dobj[]
     return
 end
 
@@ -124,4 +125,8 @@ end
 
 function MOI.get(model::Optimizer, ::MadDiff.ForwardConstraintDual, ci::MOI.ConstraintIndex)
     return model.forward.dual_sensitivities[ci]
+end
+
+function MOI.get(model::Optimizer, ::MadDiff.ForwardObjectiveSensitivity)
+    return model.forward.objective_sensitivity
 end

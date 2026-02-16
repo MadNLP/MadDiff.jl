@@ -8,7 +8,7 @@ function forward_differentiate!(
 
     unpack_x!(cache.x_nlp, cb, variable(solver.x))
     unpack_y!(cache.y_nlp, cb, solver.y)
-    
+
     x = cache.x_nlp
     y = cache.y_nlp
 
@@ -22,7 +22,25 @@ function forward_differentiate!(
     pack_jvp!(sens, cache)
     solve_jvp!(sens)
     unpack_jvp!(result, sens, cache)
+
+    compute_objective_sensitivity!(result, sens, cache, Δp)
+
     return result
+end
+
+function compute_objective_sensitivity!(
+    result::ForwardResult, sens::MadDiffSolver{T}, cache, Δp::AbstractVector,
+) where {T}
+    solver = sens.solver
+    nlp = solver.nlp
+    x = cache.x_nlp
+
+    NLPModels.grad!(nlp, x, cache.grad_x)
+    ParametricNLPModels.grad_param!(nlp, x, cache.grad_p)
+
+    result.dobj[] = dot(cache.grad_x, result.dx) + dot(cache.grad_p, Δp)
+
+    return nothing
 end
 
 function pack_jvp!(sens::MadDiffSolver{T}, cache) where {T}

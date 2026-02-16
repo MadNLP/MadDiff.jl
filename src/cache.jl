@@ -18,6 +18,8 @@ struct ForwardCache{VT, VK, PV}
     duvar_nlp::VT
     dlcon_nlp::VT
     ducon_nlp::VT
+    grad_x::VT
+    grad_p::VT
 end
 
 function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
@@ -25,6 +27,7 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
         cb = sens.solver.cb
         n_x = NLPModels.get_nvar(sens.solver.nlp)
         n_con = NLPModels.get_ncon(sens.solver.nlp)
+        n_p = sens.n_p
         x_array = full(sens.solver.x)
         VT = typeof(x_array)
         n_ineq = length(cb.ind_ineq)
@@ -47,16 +50,19 @@ function get_forward_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_x),
             zeros_like(cb, T, n_con),
             zeros_like(cb, T, n_con),
+            zeros_like(cb, T, n_x),
+            zeros_like(cb, T, n_p),
         )
     end
     return sens.forward_cache
 end
 
-struct ForwardResult{VT}
+struct ForwardResult{VT, T}
     dx::VT
     dy::VT
     dzl::VT
     dzu::VT
+    dobj::Base.RefValue{T}
 end
 
 function ForwardResult(sens::MadDiffSolver{T}) where {T}
@@ -68,6 +74,7 @@ function ForwardResult(sens::MadDiffSolver{T}) where {T}
         zeros_like(cb, T, n_con),
         zeros_like(cb, T, n_x),
         zeros_like(cb, T, n_x),
+        Ref(zero(T)),
     )
 end
 
@@ -85,6 +92,7 @@ struct ReverseCache{VT, VK, PV}
     y_nlp::VT
     dy_scaled::VT
     tmp_p::VT
+    grad_x::VT
 end
 
 function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
@@ -92,6 +100,7 @@ function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
         cb = sens.solver.cb
         n_x = NLPModels.get_nvar(sens.solver.nlp)
         n_con = NLPModels.get_ncon(sens.solver.nlp)
+        n_p = sens.n_p
         x_array = full(sens.solver.x)
         VT = typeof(x_array)
         n_ineq = length(cb.ind_ineq)
@@ -108,7 +117,8 @@ function get_reverse_cache!(sens::MadDiffSolver{T}) where {T}
             zeros_like(cb, T, n_x),
             zeros_like(cb, T, n_con),
             zeros_like(cb, T, n_con),
-            zeros_like(cb, T, sens.n_p),
+            zeros_like(cb, T, n_p),
+            zeros_like(cb, T, cb.nvar),
         )
     end
     return sens.reverse_cache

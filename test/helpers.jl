@@ -49,7 +49,8 @@ function _run(build_model; diffopt = false, param_idx = 1, dp = 1.0, optimizer =
     dy = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in cons]
     dzl = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in lb_cons]
     dzu = [MOI.get(model, DiffOpt.ForwardConstraintDual(), c) for c in ub_cons]
-    return dx, dy, dzl, dzu
+    dobj = MOI.get(model, DiffOpt.ForwardObjectiveSensitivity())
+    return dx, dy, dzl, dzu, dobj
 end
 
 function _wrap_optimizer(optimizer, mad_opts)
@@ -63,7 +64,7 @@ function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer=MadNLP.Opti
     return _run(build_model; diffopt = true, param_idx, dp, optimizer, mad_opts...)
 end
 
-function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
+function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
     if !isnothing(dL_dx)
         for (i, v) in enumerate(vars)
             MOI.set(model, DiffOpt.ReverseVariablePrimal(), v, dL_dx[i])
@@ -84,10 +85,13 @@ function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, 
             MOI.set(model, DiffOpt.ReverseConstraintDual(), c, dL_dzu[i])
         end
     end
+    if !isnothing(dobj)
+        MOI.set(model, DiffOpt.ReverseObjectiveSensitivity(), dobj)
+    end
     return nothing
 end
 
-function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
     model = if !diffopt
         Model(MadDiff.diff_optimizer(optimizer; mad_opts...))
     else
@@ -108,7 +112,7 @@ function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing
 
     DiffOpt.empty_input_sensitivities!(model)
 
-    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu)
+    _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
 
     DiffOpt.reverse_differentiate!(model)
 
@@ -116,11 +120,11 @@ function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing
     return [MOI.get(model, DiffOpt.ReverseConstraintSet(), ParameterRef(p)).value for p in params_list]
 end
 
-function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    return _run_reverse(build_model; diffopt = true, dL_dx, dL_dy, dL_dzl, dL_dzu, optimizer, mad_opts...)
+function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+    return _run_reverse(build_model; diffopt = true, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, optimizer, mad_opts...)
 end
-function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, mad_opts...)
-    return _run_reverse(build_model; diffopt = false, dL_dx, dL_dy, dL_dzl, dL_dzu, MadNLP.Optimizer, mad_opts...)
+function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, mad_opts...)
+    return _run_reverse(build_model; diffopt = false, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, MadNLP.Optimizer, mad_opts...)
 end
 
 function get_param(params, param_idx)

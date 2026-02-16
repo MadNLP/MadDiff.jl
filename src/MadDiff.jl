@@ -46,6 +46,8 @@ struct ForwardConstraintDual end
 struct ReverseVariablePrimal end
 struct ReverseConstraintDual end
 struct ReverseConstraintSet end
+struct ForwardObjectiveSensitivity end
+struct ReverseObjectiveSensitivity end
 struct DifferentiateTimeSec end
 const MADDIFF_KKTSYSTEM = "MadDiffKKTSystem"
 const MADDIFF_KKTSYSTEM_OPTIONS = "MadDiffKKTSystemOptions"
