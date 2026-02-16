@@ -36,24 +36,21 @@ function _adjoint_kktmul!(
     return
 end
 
-function _adjoint_scaled_kktmul!(
-    w::AbstractKKTVector,
-    x::AbstractKKTVector,
-    reg,
-    du_diag,
-    l_lower,
-    u_lower,
-    l_diag,
-    u_diag,
-    alpha,
-    beta,
-)
-    primal(w) .+= alpha .* reg .* primal(x)
-    dual(w) .+= alpha .* du_diag .* dual(x)
-    w.xp_lr .+= alpha .* (l_lower .* dual_lb(x))
-    w.xp_ur .+= alpha .* (u_lower .* dual_ub(x))
-    dual_lb(w) .= beta .* dual_lb(w) .+ alpha .* (.-x.xp_lr .+ l_diag .* dual_lb(x))
-    dual_ub(w) .= beta .* dual_ub(w) .+ alpha .* ( x.xp_ur .- u_diag .* dual_ub(x))
+function _adjoint_finish_bounds!(kkt, w)
+    dlb = dual_lb(w)
+    dub = dual_ub(w)
+    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
+    dlb .= .-dlb ./ kkt.l_diag
+    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
+    dub .= dub ./ kkt.u_diag
+    return
+end
+
+function _adjoint_reduce_rhs!(kkt, w)
+    dlb = dual_lb(w)
+    dub = dual_ub(w)
+    dlb .-= w.xp_lr ./ kkt.l_diag
+    dub .-= w.xp_ur ./ kkt.u_diag
     return
 end
 

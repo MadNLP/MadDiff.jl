@@ -27,24 +27,6 @@ function adjoint_mul!(
     return w
 end
 
-function _adjoint_finish_bounds!(kkt::DenseKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::DenseKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
-end
-
 function adjoint_solve_kkt_system!(kkt::DenseKKTSystem, w::AbstractKKTVector)
     _adjoint_finish_bounds!(kkt, w)
     solve_linear_system!(kkt.linear_solver, primal_dual(w))

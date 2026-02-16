@@ -1,49 +1,13 @@
 module MadNCLExt
 
 import MadDiff
-import MadDiff: adjoint_solve_kkt_system!, adjoint_mul!, _adjoint_kktmul!, MadDiffSolver, forward_differentiate!, reverse_differentiate!
+import MadDiff: adjoint_solve_kkt_system!, adjoint_mul!, _adjoint_kktmul!, MadDiffSolver, _adjoint_finish_bounds!, _adjoint_reduce_rhs!
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, full, solve_linear_system!, _symv!
 import MadNCL: NCLSolver, K1sAuglagKKTSystem, K2rAuglagKKTSystem, symul!
 import LinearAlgebra: mul!
 
 function MadDiffSolver(solver::NCLSolver; kwargs...)
     return MadDiffSolver(solver.ipm; kwargs...)
-end
-
-function _adjoint_finish_bounds!(kkt::K1sAuglagKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::K1sAuglagKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
-end
-
-function _adjoint_finish_bounds!(kkt::K2rAuglagKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::K2rAuglagKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
 end
 
 function _adjoint_k1s_solve!(kkt::K1sAuglagKKTSystem{T}, w::AbstractKKTVector) where {T}

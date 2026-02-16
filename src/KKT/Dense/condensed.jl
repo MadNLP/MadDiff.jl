@@ -1,21 +1,3 @@
-function _adjoint_finish_bounds!(kkt::DenseCondensedKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::DenseCondensedKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
-end
-
 function _adjoint_dense_condensed_solve!(kkt::DenseCondensedKKTSystem{T}, w::AbstractKKTVector) where T
     n = num_variables(kkt)
     n_eq, ns = kkt.n_eq, kkt.n_ineq

@@ -12,6 +12,27 @@ function adjoint_mul!(
     return w
 end
 
+function _adjoint_scaled_kktmul!(
+    w::AbstractKKTVector,
+    x::AbstractKKTVector,
+    reg,
+    du_diag,
+    l_lower,
+    u_lower,
+    l_diag,
+    u_diag,
+    alpha,
+    beta,
+)
+    primal(w) .+= alpha .* reg .* primal(x)
+    dual(w) .+= alpha .* du_diag .* dual(x)
+    w.xp_lr .+= alpha .* (l_lower .* dual_lb(x))
+    w.xp_ur .+= alpha .* (u_lower .* dual_ub(x))
+    dual_lb(w) .= beta .* dual_lb(w) .+ alpha .* (.-x.xp_lr .+ l_diag .* dual_lb(x))
+    dual_ub(w) .= beta .* dual_ub(w) .+ alpha .* ( x.xp_ur .- u_diag .* dual_ub(x))
+    return
+end
+
 function _adjoint_scaled_post!(kkt::ScaledSparseKKTSystem, w::AbstractKKTVector)
     dlb = dual_lb(w)
     dub = dual_ub(w)

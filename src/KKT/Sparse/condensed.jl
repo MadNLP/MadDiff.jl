@@ -26,24 +26,6 @@ function adjoint_mul!(
     return w
 end
 
-function _adjoint_finish_bounds!(kkt::SparseCondensedKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::SparseCondensedKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
-end
-
 function _adjoint_condensed_solve!(kkt::SparseCondensedKKTSystem{T}, w::AbstractKKTVector) where T
     (n,m) = size(kkt.jt_csc)
 

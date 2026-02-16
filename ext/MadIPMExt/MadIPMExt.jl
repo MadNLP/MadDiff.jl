@@ -4,25 +4,10 @@ using LinearAlgebra: mul!
 import MadDiff
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve_linear_system!
 import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
-import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim, _solve_with_refine!, _adjoint_solve_with_refine!, adjoint_solve_kkt_system!, adjoint_mul!, _adjoint_kktmul!
-
-function _adjoint_finish_bounds!(kkt::NormalKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    w.xp_lr .+= (kkt.l_lower ./ kkt.l_diag) .* dlb
-    dlb .= .-dlb ./ kkt.l_diag
-    w.xp_ur .-= (kkt.u_lower ./ kkt.u_diag) .* dub
-    dub .= dub ./ kkt.u_diag
-    return
-end
-
-function _adjoint_reduce_rhs!(kkt::NormalKKTSystem, w::AbstractKKTVector)
-    dlb = dual_lb(w)
-    dub = dual_ub(w)
-    dlb .-= w.xp_lr ./ kkt.l_diag
-    dub .-= w.xp_ur ./ kkt.u_diag
-    return
-end
+import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim,
+                _solve_with_refine!, _adjoint_solve_with_refine!,
+                adjoint_solve_kkt_system!, adjoint_mul!,
+                _adjoint_kktmul!, _adjoint_finish_bounds!, _adjoint_reduce_rhs!
 
 function _adjoint_normal_solve!(kkt::NormalKKTSystem{T}, w::AbstractKKTVector) where {T}
     r1 = kkt.buffer_n
