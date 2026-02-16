@@ -5,8 +5,8 @@
     @variable(model, y)
     @variable(model, p1 in MOI.Parameter(1.0))
     @variable(model, p2 in MOI.Parameter(2.0))
-    @constraint(model, x + y == p1 + p2)
-    @objective(model, Min, x^2 + y^2)
+    @constraint(model, x + y == p1 + sin(p2))
+    @objective(model, Min, x^2 + y^3)
     optimize!(model)
 
     sens = MadDiff.MadDiffSolver(unsafe_backend(model).inner.solver)
@@ -39,12 +39,8 @@ end
     @variable(model, p2 in MOI.Parameter(2.0))
     @variable(model, p3 in MOI.Parameter(1.5))
     @constraint(model, x + y + z >= p3)
-    @objective(model, Min, (x + p1)^2 + (y - p2)^2 + z^2)
+    @objective(model, Min, (x + p1)^2 + (y - p2)^4 + z^2)
     optimize!(model)
-
-    @test isapprox(value(x), 0.0; atol=1e-8)
-    @test isapprox(value(y), 1.0; atol=1e-8)
-    @test isapprox(value(x) + value(y) + value(z), value(p3); atol=1e-8)
 
     sens = MadDiff.MadDiffSolver(unsafe_backend(model).inner.solver)
     jac = MadDiff.jacobian!(sens)
@@ -126,7 +122,7 @@ end
     @variable(model_mp, p2 in MOI.Parameter(2.0))
     @variable(model_mp, p3 in MOI.Parameter(1.5))
     @constraint(model_mp, x + y + z >= p3)
-    @objective(model_mp, Min, (x + p1)^2 + (y - p2)^2 + z^2)
+    @objective(model_mp, Min, (x + p1)^2 + (y - sin(p2))^3 + z^2)
     optimize!(model_mp)
 
     sens_mp = MadDiff.MadDiffSolver(unsafe_backend(model_mp).inner.solver)
@@ -168,7 +164,7 @@ end
     @variable(model_mp, p2 in MOI.Parameter(2.0))
     @variable(model_mp, p3 in MOI.Parameter(1.5))
     @constraint(model_mp, x + y + z >= p3)
-    @objective(model_mp, Min, (x + p1)^2 + (y - p2)^2 + z^2)
+    @objective(model_mp, Min, (x + p1)^2 + (y - p2)^4 + z^2)
     optimize!(model_mp)
     _check_consistency(MadDiff.MadDiffSolver(unsafe_backend(model_mp).inner.solver); atol = 1e-8)
 end
