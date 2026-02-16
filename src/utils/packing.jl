@@ -17,7 +17,7 @@ function spdiagm_like(cb, diag::AbstractVector{T}) where {T}
     return _get_sparse_csc((n, n), colptr, rowval, nzval)
 end
 
-function spdiagm_like(cb, ::Type{T}, n::Int) where {T}
+function sparse_identity(cb, ::Type{T}, n::Int) where {T}
     diag = create_array(cb, T, n)
     fill!(diag, one(T))
     return spdiagm_like(cb, diag)

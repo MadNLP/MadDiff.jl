@@ -46,8 +46,8 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + n_ub
 
-    id_x = spdiagm_like(cb, T, n_x)
-    id_con = spdiagm_like(cb, T, n_con)
+    id_x = sparse_identity(cb, T, n_x)
+    id_con = sparse_identity(cb, T, n_con)
 
     pack_dx!(view(W, primal_seed_rows, r_dx), cb, id_x)
     pack_dy!(view(W, dual_rows, r_dy), cb, id_con)
