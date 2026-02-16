@@ -5,6 +5,7 @@ function adjoint_multi_solve_kkt_system! end
 function adjoint_mul! end
 
 function adjoint_multi_solve_kkt_system!(kkt::AbstractKKTSystem, W::AbstractMatrix)
+    # TODO: sparse input dense output
     rhs = UnreducedKKTVector(kkt)
     n = length(full(rhs))
     for j in axes(W, 2)
