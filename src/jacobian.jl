@@ -30,7 +30,7 @@ end
 function solve_jacobian!(sens::MadDiffSolver{T}, jcache) where {T}
     W = jcache.W
     assemble_jacobian_rhs!(sens, W, jcache)
-    MadNLP.multi_solve_kkt_system!(sens.kkt, W)
+    multi_solve_kkt_system!(sens.kkt, W)
     return nothing
 end
 
