@@ -1,20 +1,31 @@
+
+"""
+    MadDiffConfig
+
+Options struct for MadDiff. Except for `skip_kkt_refactorization`, if any options are provided,
+    MadDiff will create its own KKT system rather than re-using the solver's.
+
+## Fields
+- `kkt_system::Type`: The `MadNLP.AbstractKKTSystem` to use for implicit differentiation. Example: `MadNLP.SparseUnreducedKKTSystem`
+- `kkt_options::Dict`: The kwargs to pass to `MadNLP.create_kkt_system`.
+- `linear_solver::Type`: The `MadNLP.AbstractLinearSolver` to use for implicit differentation. Example: `MadNLP.MumpsSolver`
+- `linear_solver_options::Any`: The `opts` to pass to the constructor of `linear_solver`.
+- `skip_kkt_refactorization::Bool`: If set to `true`, MadDiff will not refactorize the KKT system before differentiation. Default is `false`.
+"""
 Base.@kwdef mutable struct MadDiffConfig
     kkt_system::Union{Nothing, Type} = nothing
     kkt_options::Union{Nothing, Dict} = nothing
     linear_solver::Union{Nothing, Type} = nothing
     linear_solver_options::Any = nothing
-    reuse_kkt::Bool = true
     skip_kkt_refactorization::Bool = false
 end
 
 
-function _needs_new_kkt(config)
-    return !isnothing(config.kkt_system) ||
-        !isnothing(config.kkt_options) ||
-        !isnothing(config.linear_solver) ||
-        !isnothing(config.linear_solver_options)
-end
+"""
+    MadDiffSolver(solver::MadNLP.AbstractMadNLPSolver; config::MadDiffConfig = MadDiffConfig())
 
+Create a `MadDiffSolver` from a solved `MadNLP.AbstractMadNLPSolver`.
+"""
 mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
@@ -66,6 +77,11 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     )
 end
 
+"""
+    reset_sensitivity_cache!(sens::MadDiffSolver)
+
+Clear the differentiation caches. Must be called upon changes to the underlying `MadNLP.AbstractMadNLPSolver`.
+"""
 function reset_sensitivity_cache!(sens::MadDiffSolver)
     sens.jvp_cache = nothing
     sens.vjp_cache = nothing
@@ -75,10 +91,32 @@ function reset_sensitivity_cache!(sens::MadDiffSolver)
     return sens
 end
 
+"""
+    jacobian_vector_product!(sens::MadDiffSolver, Δp::AbstractVector)
+
+Compute sensitivities of the optimal solution to a parameter perturbation
+`Δp` by evaluating the Jacobian–vector product (JVP) of the KKT system
+via forward implicit differentiation.
+
+Returns a [`JVPResult`](@ref) with solution sensitivities `dx`, `dy`, `dzl`, `dzu`.
+"""
 function jacobian_vector_product!(sens::MadDiffSolver, Δp::AbstractVector)
     return jacobian_vector_product!(JVPResult(sens), sens, Δp)
 end
 
+"""
+    vector_jacobian_product!(sens::MadDiffSolver; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
+
+Compute the vector–Jacobian product (VJP) needed to backpropagate a scalar loss
+through the optimal solution with respect to the parameters, using reverse
+implicit differentiation.
+
+Keyword arguments provide the loss sensitivities with respect to the primal/dual
+solution components (`dL_dx`, `dL_dy`, `dL_dzl`, `dL_dzu`). A "shortcut" objective contribution
+is also accepted under `dobj`. All are optional, but at least one must be provided.
+
+Returns a [`VJPResult`](@ref) containing the parameter gradient `grad_p`.
+"""
 function vector_jacobian_product!(
     sens::MadDiffSolver;
     dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing,
@@ -86,9 +124,26 @@ function vector_jacobian_product!(
     return vector_jacobian_product!(VJPResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
 end
 
+"""
+    jacobian!(sens::MadDiffSolver)
+
+Compute the Jacobian of the optimal solution with respect to the parameters
+using forward implicit differentiation.
+
+Returns a [`JacobianResult`](@ref) containing Jacobian blocks.
+"""
 function jacobian!(sens::MadDiffSolver)
     jacobian!(JacobianResult(sens), sens)
 end
+
+"""
+    jacobian_transpose!(sens::MadDiffSolver)
+
+Compute the transpose of the Jacobian of the optimal solution with respect to
+parameters using reverse implicit differentiation.
+
+Returns a [`JacobianTransposeResult`](@ref) containing Jacobian transpose blocks.
+"""
 function jacobian_transpose!(sens::MadDiffSolver)
     jacobian_transpose!(JacobianTransposeResult(sens), sens)
 end

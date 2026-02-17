@@ -58,7 +58,22 @@ function get_jvp_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.jvp_cache
 end
 
+"""
+    JVPResult{VT,T}
 
+Container for the result of a Jacobian–vector product (JVP), for the sensitivity of the
+optimal solution with respect to parameters.
+
+Fields store directional sensitivities for a parameter perturbation `Δp`:
+
+- `dx`: direction for primal variables `x`
+- `dy`: direction for constraint multipliers `y`
+- `dzl`: direction for lower-bound multipliers
+- `dzu`: direction for upper-bound multipliers
+- `dobj`: directional derivative of the objective value along `Δp`
+
+Returned by [`jacobian_vector_product!`](@ref).
+"""
 struct JVPResult{VT, T}
     dx::VT
     dy::VT
@@ -126,6 +141,19 @@ function get_vjp_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.vjp_cache
 end
 
+"""
+    VJPResult{VT,GT}
+
+Container for the result of a vector–Jacobian product (VJP), for backpropagating
+a scalar loss through the optimal solution.
+
+Fields:
+- `dx`, `dy`, `dzl`, `dzu`: adjoints for the solution components (the solved
+  reverse sensitivities)
+- `grad_p`: gradient of the loss with respect to parameters
+
+Returned by [`vector_jacobian_product!`](@ref).
+"""
 struct VJPResult{VT, GT}
     dx::VT
     dy::VT
@@ -134,6 +162,18 @@ struct VJPResult{VT, GT}
     grad_p::GT
 end
 
+function VJPResult(sens::MadDiffSolver{T}) where {T}
+    n_x = get_nvar(sens.solver.nlp)
+    n_con = get_ncon(sens.solver.nlp)
+    cb = sens.solver.cb
+    return VJPResult(
+        zeros_like(cb, T, n_x),
+        zeros_like(cb, T, n_con),
+        zeros_like(cb, T, n_x),
+        zeros_like(cb, T, n_x),
+        zeros_like(cb, T, sens.n_p),
+    )
+end
 
 struct JacobianCache{VT, MT, WM}
     x_nlp::VT
@@ -191,6 +231,21 @@ function get_jac_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.jac_cache
 end
 
+"""
+    JacobianResult{MT,VT}
+
+Container for the Jacobian of the optimal solution with respect to parameters.
+
+Fields are Jacobian blocks with columns corresponding to parameter directions:
+
+- `dx`: ∂x/∂p
+- `dy`: ∂y/∂p
+- `dzl`: ∂zl/∂p
+- `dzu`: ∂zu/∂p
+- `dobj`: ∂obj/∂p (objective gradient w.r.t. parameters)
+
+Returned by [`jacobian!`](@ref).
+"""
 struct JacobianResult{MT, VT}
     dx::MT
     dy::MT
@@ -280,6 +335,22 @@ function get_jact_cache!(sens::MadDiffSolver{T}) where {T}
     return sens.jact_cache
 end
 
+"""
+    JacobianTransposeResult{MT,VT}
+
+Container for the transpose of the Jacobian of the optimal solution with respect
+to parameters.
+
+Fields represent Jacobian-transpose blocks (rows corresponding to parameters):
+
+- `dx`: (∂x/∂p)ᵀ
+- `dy`: (∂y/∂p)ᵀ
+- `dzl`: (∂zl/∂p)ᵀ
+- `dzu`: (∂zu/∂p)ᵀ
+- `dobj`: (∂obj/∂p)ᵀ
+
+Returned by [`jacobian_transpose!`](@ref).
+"""
 struct JacobianTransposeResult{MT, VT}
     dx::MT
     dy::MT
@@ -299,18 +370,5 @@ function JacobianTransposeResult(sens::MadDiffSolver{T}) where {T}
         zeros_like(cb, T, n_p, n_x),
         zeros_like(cb, T, n_p, n_x),
         zeros_like(cb, T, n_p),
-    )
-end
-
-function VJPResult(sens::MadDiffSolver{T}) where {T}
-    n_x = get_nvar(sens.solver.nlp)
-    n_con = get_ncon(sens.solver.nlp)
-    cb = sens.solver.cb
-    return VJPResult(
-        zeros_like(cb, T, n_x),
-        zeros_like(cb, T, n_con),
-        zeros_like(cb, T, n_x),
-        zeros_like(cb, T, n_x),
-        zeros_like(cb, T, sens.n_p),
     )
 end

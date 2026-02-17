@@ -1,14 +1,9 @@
 function get_sensitivity_kkt(solver, config::MadDiffConfig)
-    if !config.reuse_kkt && isnothing(config.kkt_system)
-        error("reuse_kkt=false requires kkt_system to be set.")
-    end
-
-    reusing_solver_kkt = config.reuse_kkt && !_needs_new_kkt(config)
+    reusing_solver_kkt = !_needs_new_kkt(config)
 
     kkt = if reusing_solver_kkt
         solver.kkt
     else
-        # config.reuse_kkt && @info "Ignoring reuse_kkt=true since custom KKT config was passed. To silence this message, pass reuse_kkt=false."
         build_new_kkt(
             solver;
             kkt_system = config.kkt_system,

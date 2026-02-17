@@ -23,3 +23,11 @@ function Base.setproperty!(s:: _SensitivitySolverShim, name::Symbol, value)
     name === :kkt && return setfield!(s, :kkt, value)
     return setproperty!(getfield(s, :inner), name, value)
 end
+
+
+function _needs_new_kkt(config)
+    return !isnothing(config.kkt_system) ||
+        !isnothing(config.kkt_options) ||
+        !isnothing(config.linear_solver) ||
+        !isnothing(config.linear_solver_options)
+end

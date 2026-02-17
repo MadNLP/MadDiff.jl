@@ -49,6 +49,13 @@ export jacobian!, jacobian_transpose!
 export reset_sensitivity_cache!
 
 # implemented in MathOptInterfaceExt
+"""
+    MadDiff.diff_optimizer(optimizer_constructor; kwargs...)
+
+Wrap an optimizer constructor (e.g. `MadNLP.Optimizer`) for implicit differentiation with MadDiff.
+
+Intended to be used with JuMP: `model = JuMP.Model(MadDiff.diff_optimizer(MadNLP.Optimizer))`.
+"""
 function diff_optimizer end
 function forward_differentiate! end
 function reverse_differentiate! end
