@@ -21,10 +21,10 @@ for (KKTSystem, Callback) in [
     (MadNCL.K1sAuglagKKTSystem, MadNLP.SparseCallback),
     (MadNCL.K2rAuglagKKTSystem, MadNLP.SparseCallback),
     (HybridKKT.HybridCondensedKKTSystem, MadNLP.SparseCallback),
+    # TODO: BFGS support
     # TODO: Argos.jl (MixedAuglagKKTSystem, BieglerKKTSystem)
     # TODO: CompressedSensingIPM.jl (FFTKKTSystem, GondzioKKTSystem)
 ]
-    # TODO: test LBFGS
     @testset "$(KKTSystem)" begin
         _run_adjoint_tests(KKTSystem, Callback)
     end
@@ -225,7 +225,29 @@ end
 end
 end
 
-#=
+@testset "MOI attributes" begin
+    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+    set_silent(model)
+    @variable(model, x >= 0)
+    @variable(model, p in MOI.Parameter(1.0))
+    @constraint(model, c, x >= p)
+    @objective(model, Min, x^2)
+    optimize!(model)
+    @test solver_name(model) == "MadDiff[MadNLP]"
+    @test MOI.get(model, DiffOpt.DifferentiateTimeSec()) == 0.0
+    for (attr,val) in [
+        (MadDiff.MADDIFF_KKTSYSTEM, MadNLP.SparseUnreducedKKTSystem),
+        (MadDiff.MADDIFF_KKTSYSTEM_OPTIONS, Dict(:dummy => true)),
+        (MadDiff.MADDIFF_LINEARSOLVER, MadNLP.MumpsSolver),
+        (MadDiff.MADDIFF_LINEARSOLVER_OPTIONS, MadNLP.MumpsOptions(mumps_pivtol=1)),
+        (MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION, true),
+    ]
+        @test MOI.supports(unsafe_backend(model), MOI.RawOptimizerAttribute(attr))
+        set_optimizer_attribute(model, attr, val)
+        @test get_optimizer_attribute(model, attr) === val
+    end
+end
+
 @testset "MOI" begin
     model = MOI.Utilities.CachingOptimizer(
         MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
@@ -246,6 +268,9 @@ end
             ]
         );
         exclude = [
+            # MadDiff asks for :Hess which isn't available with UserDefinedFunction without hessian
+            "test_nonlinear_expression_multivariate_function",
+
             # MadNLP reaches maximum number of iterations instead
             # of returning infeasibility certificate.
             r"test_linear_DUAL_INFEASIBLE.*",
@@ -268,4 +293,3 @@ end
         ]
     )
 end
-=#
