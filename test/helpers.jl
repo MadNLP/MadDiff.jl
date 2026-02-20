@@ -26,6 +26,7 @@ function _run(build_model; diffopt = false, param_idx = 1, dp = 1.0, optimizer =
     model = if diffopt
         m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
         MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        MOI.set(m, DiffOpt.AllowObjectiveAndSolutionInput(), true)
         m
     else
         Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
@@ -97,6 +98,7 @@ function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing
     else
         m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
         MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+        MOI.set(m, DiffOpt.AllowObjectiveAndSolutionInput(), true)
         m
     end
     if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
@@ -135,6 +137,7 @@ end
 function get_problem_dims(build_model; optimizer=MadNLP.Optimizer, mad_opts...)
     model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
+    MOI.set(model, DiffOpt.AllowObjectiveAndSolutionInput(), true)
     set_silent(model)
     vars, params = build_model(model)
 
