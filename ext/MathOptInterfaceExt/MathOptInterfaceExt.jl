@@ -46,7 +46,7 @@ WorkBuffers{T}() where {T} = WorkBuffers{T}(
     Vector{T}(undef, 0),
 )
 
-mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimizer
+mutable struct DiffOptWrapper{OT <: MOI.AbstractOptimizer, T}
     inner::OT
     param_ci_to_vi::Dict{MOI.ConstraintIndex, MOI.VariableIndex}
     forward::ForwardModeData{T}
@@ -57,8 +57,8 @@ mutable struct Optimizer{OT <: MOI.AbstractOptimizer, T} <: MOI.AbstractOptimize
     diff_time::T
 end
 
-function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimizer}
-    return Optimizer{OT, T}(
+function DiffOptWrapper(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimizer}
+    return DiffOptWrapper{OT, T}(
         inner,
         Dict{MOI.ConstraintIndex, MOI.VariableIndex}(),
         ForwardModeData{T}(),
@@ -68,10 +68,6 @@ function Optimizer(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimi
         nothing,
         zero(T),
     )
-end
-
-function MadDiff.diff_optimizer(optimizer_constructor; kwargs...)
-    return () -> Optimizer(optimizer_constructor(; kwargs...))
 end
 
 include("moi_wrapper.jl")

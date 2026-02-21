@@ -22,16 +22,44 @@ function get_bound_constraint_refs(model)
     return lb_cons, ub_cons
 end
 
-function _run(build_model; diffopt = false, param_idx = 1, dp = 1.0, optimizer = MadNLP.Optimizer, mad_opts...)
+function _maddiff_config(maddiff_opts)
+    config = MadDiff.MadDiffConfig()
+    for (name, value) in pairs(maddiff_opts)
+        if name == :kkt_system
+            config.kkt_system = value
+        elseif name == :kkt_options
+            config.kkt_options = value
+        elseif name == :linear_solver
+            config.linear_solver = value
+        elseif name == :linear_solver_options
+            config.linear_solver_options = value
+        elseif name == :skip_kkt_refactorization
+            config.skip_kkt_refactorization = value
+        else
+            error("Unknown MadDiff test option: $(name)")
+        end
+    end
+    return config
+end
+
+function _maddiff_model(optimizer, madnlp_opts, maddiff_opts)
+    model = MadDiff.diff_model(
+        _wrap_optimizer(optimizer, madnlp_opts);
+        config = _maddiff_config(maddiff_opts),
+    )
+    return model
+end
+
+function _run(build_model; diffopt = false, param_idx = 1, dp = 1.0, optimizer = MadNLP.Optimizer, madnlp_opts = (;), maddiff_opts = (;))
     model = if diffopt
-        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
+        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, madnlp_opts)))
         MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
         MOI.set(m, DiffOpt.AllowObjectiveAndSolutionInput(), true)
         m
     else
-        Model(MadDiff.diff_optimizer(MadNLP.Optimizer; mad_opts...))
+        _maddiff_model(optimizer, madnlp_opts, maddiff_opts)
     end
-    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+    if optimizer === MadNLP.Optimizer && get(madnlp_opts, :linear_solver, nothing) === CUDSSSolver
         set_optimizer_attribute(model, "array_type", CuArray)
     end
     set_silent(model)
@@ -58,11 +86,11 @@ function _wrap_optimizer(optimizer, mad_opts)
     return (;kwargs...) -> optimizer(; kwargs..., mad_opts...)
 end
 
-function run_maddiff(build_model; param_idx = 1, dp = 1.0, mad_opts...)
-    return _run(build_model; diffopt = false, param_idx, dp, MadNLP.Optimizer, mad_opts...)
+function run_maddiff(build_model; param_idx = 1, dp = 1.0, madnlp_opts = (;), maddiff_opts = (;))
+    return _run(build_model; diffopt = false, param_idx, dp, optimizer = MadNLP.Optimizer, madnlp_opts, maddiff_opts)
 end
-function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer=MadNLP.Optimizer, mad_opts...)
-    return _run(build_model; diffopt = true, param_idx, dp, optimizer, mad_opts...)
+function run_diffopt(build_model; param_idx = 1, dp = 1.0, optimizer = MadNLP.Optimizer, madnlp_opts = (;))
+    return _run(build_model; diffopt = true, param_idx, dp, optimizer, madnlp_opts)
 end
 
 function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
@@ -92,18 +120,17 @@ function _set_reverse_seeds!(model, vars, cons, lb_cons, ub_cons; dL_dx, dL_dy, 
     return nothing
 end
 
-function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
+function _run_reverse(build_model; diffopt = false, dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing, optimizer = MadNLP.Optimizer, madnlp_opts = (;), maddiff_opts = (;))
     model = if !diffopt
-        Model(MadDiff.diff_optimizer(optimizer; mad_opts...))
+        _maddiff_model(optimizer, madnlp_opts, maddiff_opts)
     else
-        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
+        m = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, madnlp_opts)))
         MOI.set(m, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
         MOI.set(m, DiffOpt.AllowObjectiveAndSolutionInput(), true)
         m
     end
-    if optimizer === MadNLP.Optimizer && get(mad_opts, :linear_solver, nothing) === CUDSSSolver
+    if optimizer === MadNLP.Optimizer && get(madnlp_opts, :linear_solver, nothing) === CUDSSSolver
         set_optimizer_attribute(model, "array_type", CuArray)
-        set_optimizer_attribute(model, MadDiff.MADDIFF_KKTSYSTEM, MadNLP.SparseKKTSystem)
     end
     set_silent(model)
     vars, params = build_model(model)
@@ -122,11 +149,11 @@ function _run_reverse(build_model; diffopt = false, dL_dx=nothing, dL_dy=nothing
     return [MOI.get(model, DiffOpt.ReverseConstraintSet(), ParameterRef(p)).value for p in params_list]
 end
 
-function run_diffopt_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, optimizer=MadNLP.Optimizer, mad_opts...)
-    return _run_reverse(build_model; diffopt = true, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, optimizer, mad_opts...)
+function run_diffopt_reverse(build_model; dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing, optimizer = MadNLP.Optimizer, madnlp_opts = (;))
+    return _run_reverse(build_model; diffopt = true, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, optimizer, madnlp_opts)
 end
-function run_maddiff_reverse(build_model; dL_dx=nothing, dL_dy=nothing, dL_dzl=nothing, dL_dzu=nothing, dobj=nothing, mad_opts...)
-    return _run_reverse(build_model; diffopt = false, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, MadNLP.Optimizer, mad_opts...)
+function run_maddiff_reverse(build_model; dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing, madnlp_opts = (;), maddiff_opts = (;))
+    return _run_reverse(build_model; diffopt = false, dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, optimizer = MadNLP.Optimizer, madnlp_opts, maddiff_opts)
 end
 
 function get_param(params, param_idx)
@@ -134,8 +161,65 @@ function get_param(params, param_idx)
 end
 
 
-function get_problem_dims(build_model; optimizer=MadNLP.Optimizer, mad_opts...)
-    model = Model(() -> DiffOpt.diff_optimizer(_wrap_optimizer(optimizer, mad_opts)))
+function _unwrap_optimizer(optimizer)
+    if optimizer isa MOI.Utilities.CachingOptimizer
+        return _unwrap_optimizer(optimizer.optimizer)
+    elseif optimizer isa MOI.Bridges.LazyBridgeOptimizer
+        return _unwrap_optimizer(optimizer.model)
+    elseif optimizer isa DiffOpt.POI.Optimizer
+        return _unwrap_optimizer(optimizer.optimizer)
+    end
+    return optimizer
+end
+
+_solver_from_model(model) = _unwrap_optimizer(unsafe_backend(model).optimizer).solver
+
+function _check_consistency(sens; atol = 1e-8, rtol = 0.0)
+    jf = MadDiff.jacobian!(sens)
+    jr = MadDiff.jacobian_transpose!(sens)
+    @test isapprox(jr.dx, transpose(jf.dx); atol, rtol)
+    @test isapprox(jr.dy, transpose(jf.dy); atol, rtol)
+    @test isapprox(jr.dzl, transpose(jf.dzl); atol, rtol)
+    @test isapprox(jr.dzu, transpose(jf.dzu); atol, rtol)
+    @test isapprox(jr.dobj, jf.dobj; atol, rtol)
+
+    n_x   = NLPModels.get_nvar(sens.solver.nlp)
+    n_con = NLPModels.get_ncon(sens.solver.nlp)
+    for j in 1:sens.n_p
+        dp = zeros(Float64, sens.n_p); dp[j] = 1.0
+        col = MadDiff.jacobian_vector_product!(sens, dp)
+
+        for i in 1:n_x
+            dL_dx = zeros(Float64, n_x); dL_dx[i] = 1.0
+            @test isapprox(col.dx[i], MadDiff.vector_jacobian_product!(sens; dL_dx).grad_p[j]; atol, rtol)
+        end
+        for i in 1:n_con
+            dL_dy = zeros(Float64, n_con); dL_dy[i] = 1.0
+            @test isapprox(col.dy[i], MadDiff.vector_jacobian_product!(sens; dL_dy).grad_p[j]; atol, rtol)
+        end
+        for i in 1:n_x
+            dL_dzl = zeros(Float64, n_x); dL_dzl[i] = 1.0
+            @test isapprox(col.dzl[i], MadDiff.vector_jacobian_product!(sens; dL_dzl).grad_p[j]; atol, rtol)
+        end
+        for i in 1:n_x
+            dL_dzu = zeros(Float64, n_x); dL_dzu[i] = 1.0
+            @test isapprox(col.dzu[i], MadDiff.vector_jacobian_product!(sens; dL_dzu).grad_p[j]; atol, rtol)
+        end
+        @test isapprox(col.dobj[], MadDiff.vector_jacobian_product!(sens; dobj = 1.0).grad_p[j]; atol, rtol)
+    end
+end
+
+function run_maddiff_consistency(build_model; madnlp_opts = (;), maddiff_opts = (;), atol = 1e-8, rtol = 0.0)
+    model = _maddiff_model(MadNLP.Optimizer, madnlp_opts, maddiff_opts)
+    set_silent(model)
+    build_model(model)
+    optimize!(model)
+    config = _maddiff_config(maddiff_opts)
+    _check_consistency(MadDiff.MadDiffSolver(_solver_from_model(model); config); atol, rtol)
+end
+
+function get_problem_dims(build_model; optimizer=MadNLP.Optimizer, madnlp_opts=(;), maddiff_opts = (;))
+    model = _maddiff_model(optimizer, madnlp_opts, maddiff_opts)
     MOI.set(model, DiffOpt.ModelConstructor(), DiffOpt.NonLinearProgram.Model)
     MOI.set(model, DiffOpt.AllowObjectiveAndSolutionInput(), true)
     set_silent(model)

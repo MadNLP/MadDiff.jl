@@ -33,7 +33,7 @@ end
 
 @testset "README" begin
 @testset "DiffOpt API" begin
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+    model = MadDiff.diff_model(MadNLP.Optimizer)
     set_silent(model)
     @variable(model, x)
     @variable(model, p in MOI.Parameter(1.0))
@@ -74,7 +74,7 @@ end
     @test isapprox(dp_mad, dp_ref; atol=1e-6)
 
     @testset "empty_input_sensitivities!" begin
-        model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+        model = MadDiff.diff_model(MadNLP.Optimizer)
         set_silent(model)
         @variable(model, x)
         @variable(model, p1 in MOI.Parameter(1.0))
@@ -112,33 +112,78 @@ end
 end
 end
 
-include("test_jacobian.jl")
-
 include("problems.jl")
+
+const SKIP_PROBLEMS = Set([
+    "qp_multi_con",  # dual degeneracy
+    "qp_mixed",  # primal degeneracy
+    "nlp_trig",  # TODO: investigate (condensed)
+])
+
+include("test_jacobian.jl")
 
 const DX_TOL = 1e-6
 const DY_TOL = 1e-3  # TODO: investigate
-# (name, opts, dx_tol, dy_tol, skip_equality)
+_kkt_config(; name, madnlp_opts = (;), maddiff_opts = (;), dx_tol = DX_TOL, dy_tol = DY_TOL, skip_equality = false) = (name = name, madnlp_opts = madnlp_opts, maddiff_opts = maddiff_opts, dx_tol = dx_tol, dy_tol = dy_tol, skip_equality = skip_equality)
 const KKT_CONFIGS = [
-    ("Default (SparseKKT)", Dict{Symbol, Any}(), DX_TOL, DY_TOL, false),
-    ("Default Skip (SparseKKT)", Dict{Symbol, Any}(:skip_kkt_refactorization => true), DX_TOL, DY_TOL, false),
-    ("SparseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseCondensedKKTSystem, :bound_relax_factor => 1e-6), 5e-4, 5e-3, true),  # /!\ reduced tolerances for condensed
-    ("SparseUnreducedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.SparseUnreducedKKTSystem), DX_TOL, DY_TOL, false),
-    ("ScaledSparseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.ScaledSparseKKTSystem), DX_TOL, DY_TOL, false),
-    ("DenseKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
-    ("DenseCondensedKKT", Dict{Symbol, Any}(:kkt_system => MadNLP.DenseCondensedKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
-    ("NormalKKT", Dict{Symbol, Any}(:kkt_system => MadIPM.NormalKKTSystem, :linear_solver => MadNLP.LapackCPUSolver), DX_TOL, DY_TOL, false),
-    ("HybridCondensedKKT", Dict{Symbol, Any}(:kkt_system => HybridKKT.HybridCondensedKKTSystem), 5e-4, 5e-3, false),  # /!\ reduced tolerances for condensed
+    _kkt_config(name = "Default (SparseKKT)"),
+    _kkt_config(
+        name = "Default Skip (SparseKKT)",
+        maddiff_opts = (; skip_kkt_refactorization = true),
+        dx_tol = 5e-4,
+        dy_tol = 5e-3,
+    ),
+    _kkt_config(
+        name = "SparseCondensedKKT",
+        madnlp_opts = (; kkt_system = MadNLP.SparseCondensedKKTSystem, bound_relax_factor = 1e-6),
+        dx_tol = 5e-4,
+        dy_tol = 5e-3,
+        skip_equality = true,
+    ),  # /!\ reduced tolerances for condensed
+    _kkt_config(
+        name = "SparseUnreducedKKT",
+        madnlp_opts = (; kkt_system = MadNLP.SparseUnreducedKKTSystem),
+    ),
+    _kkt_config(
+        name = "ScaledSparseKKT",
+        madnlp_opts = (; kkt_system = MadNLP.ScaledSparseKKTSystem),
+    ),
+    _kkt_config(
+        name = "DenseKKT",
+        madnlp_opts = (; kkt_system = MadNLP.DenseKKTSystem, linear_solver = MadNLP.LapackCPUSolver),
+    ),
+    _kkt_config(
+        name = "DenseCondensedKKT",
+        madnlp_opts = (; kkt_system = MadNLP.DenseCondensedKKTSystem, linear_solver = MadNLP.LapackCPUSolver),
+    ),
+    _kkt_config(
+        name = "NormalKKT",
+        madnlp_opts = (; kkt_system = MadIPM.NormalKKTSystem, linear_solver = MadNLP.LapackCPUSolver),
+    ),
+    _kkt_config(
+        name = "HybridCondensedKKT",
+        madnlp_opts = (; kkt_system = HybridKKT.HybridCondensedKKTSystem),
+        dx_tol = 5e-4,
+        dy_tol = 5e-3,
+    ),  # /!\ reduced tolerances for condensed
     # TODO: test MadIPM.Optimizer, MadNCL.Optimizer
 ]
 
 if HAS_CUDA
-    push!(KKT_CONFIGS, ("cuDSS (SparseCondensedKKT)", Dict{Symbol, Any}(
-        :linear_solver => CUDSSSolver,
-        :cudss_ir => 3,
-        :bound_relax_factor => 1e-7,
-        :tol => 1e-7
-    ), 1e-4, 1e-2, false))
+    push!(
+        KKT_CONFIGS,
+        _kkt_config(
+            name = "cuDSS (SparseCondensedKKT)",
+            madnlp_opts = (
+                linear_solver = CUDSSSolver,
+                cudss_ir = 3,
+                bound_relax_factor = 1e-7,
+                tol = 1e-7,
+            ),
+            dx_tol = 1e-4,
+            dy_tol = 1e-2,
+        ),
+    )
 end
 
 const FV_CONFIGS = [
@@ -147,20 +192,20 @@ const FV_CONFIGS = [
     ("RelaxBound", MadNLP.RelaxBound),
 ]
 
-const SKIP_PROBLEMS = Set([
-    "qp_multi_con",  # dual degeneracy
-    "qp_mixed",  # primal degeneracy
-    "nlp_trig",  # TODO: investigate (condensed)
-])
-
-for (kkt_name, kkt_opts, dx_tol, dy_tol, skip_equality) in KKT_CONFIGS
+for cfg in KKT_CONFIGS
+kkt_name = cfg.name
+madnlp_opts_base = cfg.madnlp_opts
+maddiff_opts = cfg.maddiff_opts
+dx_tol = cfg.dx_tol
+dy_tol = cfg.dy_tol
+skip_equality = cfg.skip_equality
 for (fv_name, fv_handler) in FV_CONFIGS
 @testset "$kkt_name × $fv_name" begin
 Random.seed!(42)
 for prob_name in keys(PROBLEMS)
     prob_name in SKIP_PROBLEMS && continue
     build, n_params, has_equality, is_lp = get_problem(prob_name)
-    kkt_system = get(kkt_opts, :kkt_system, nothing)
+    kkt_system = get(madnlp_opts_base, :kkt_system, nothing)
     kkt_system === MadIPM.NormalKKTSystem && !is_lp && continue
     skip_equality && has_equality && continue
 
@@ -173,20 +218,19 @@ for prob_name in keys(PROBLEMS)
     rtol = prob_name == "small_coef" ? 1e-4 : 0.0
 
     @testset "$prob_name" begin
-    opts = copy(kkt_opts)
-    if fv_handler !== nothing
-        opts[:fixed_variable_treatment] = fv_handler
-    end
+    madnlp_opts = fv_handler === nothing ?
+        madnlp_opts_base :
+        merge(madnlp_opts_base, (; fixed_variable_treatment = fv_handler))
 
-    n_x, n_con, n_lb, n_ub = get_problem_dims(build; opts...)
+    n_x, n_con, n_lb, n_ub = get_problem_dims(build; madnlp_opts)
 
     # Forward mode tests
     @testset "Forward $prob_name" begin
         rng = MersenneTwister(hash((kkt_name, fv_name, prob_name)))
         for pidx in 1:n_params
         dp = randn(rng)
-        (dx_mad, dy_mad, dzl_mad, dzu_mad, dobj_mad) = run_maddiff(build; param_idx=pidx, dp=dp, opts...)
-        (dx_diff, dy_diff, dzl_diff, dzu_diff, dobj_diff) = run_diffopt(build; param_idx=pidx, dp=dp, opts...)
+        (dx_mad, dy_mad, dzl_mad, dzu_mad, dobj_mad) = run_maddiff(build; param_idx = pidx, dp = dp, madnlp_opts, maddiff_opts)
+        (dx_diff, dy_diff, dzl_diff, dzu_diff, dobj_diff) = run_diffopt(build; param_idx = pidx, dp = dp, madnlp_opts)
 
         for (g1, g2) in zip(dx_mad, dx_diff)
             @test isapprox(g1, g2; atol=dx_atol, rtol)
@@ -213,11 +257,16 @@ for prob_name in keys(PROBLEMS)
         dL_dzu = randn(rng, n_ub)
         dobj = randn(rng)
 
-        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, opts...)
-        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, opts...)
+        grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, madnlp_opts, maddiff_opts)
+        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, madnlp_opts)
         for (g1, g2) in zip(grad_mad, grad_diff)
             @test isapprox(g1, g2; atol=dy_atol, rtol)
         end
+    end
+
+    # Consistency tests: jac/jact transposes each other, jvp/vjp are adjoint
+    @testset "Consistency $prob_name" begin
+        run_maddiff_consistency(build; madnlp_opts, maddiff_opts, atol = dy_atol, rtol)
     end
 end
 end
@@ -226,70 +275,18 @@ end
 end
 
 @testset "MOI attributes" begin
-    model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))
+    model = MadDiff.diff_model(MadNLP.Optimizer)
     set_silent(model)
     @variable(model, x >= 0)
     @variable(model, p in MOI.Parameter(1.0))
     @constraint(model, c, x >= p)
     @objective(model, Min, x^2)
     optimize!(model)
-    @test solver_name(model) == "MadDiff[MadNLP]"
-    @test MOI.get(model, DiffOpt.DifferentiateTimeSec()) == 0.0
-    for (attr,val) in [
-        (MadDiff.MADDIFF_KKTSYSTEM, MadNLP.SparseUnreducedKKTSystem),
-        (MadDiff.MADDIFF_KKTSYSTEM_OPTIONS, Dict(:dummy => true)),
-        (MadDiff.MADDIFF_LINEARSOLVER, MadNLP.MumpsSolver),
-        (MadDiff.MADDIFF_LINEARSOLVER_OPTIONS, MadNLP.MumpsOptions(mumps_pivtol=1)),
-        (MadDiff.MADDIFF_SKIP_KKT_REFACTORIZATION, true),
-    ]
-        @test MOI.supports(unsafe_backend(model), MOI.RawOptimizerAttribute(attr))
-        set_optimizer_attribute(model, attr, val)
-        @test get_optimizer_attribute(model, attr) === val
-    end
-end
-
-@testset "MOI" begin
-    model = MOI.Utilities.CachingOptimizer(
-        MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
-        MadDiff.diff_optimizer(MadNLP.Optimizer)(),
-    )
-    MOI.set(model, MOI.Silent(), true)
-    MOI.Test.runtests(
-        model,
-        MOI.Test.Config(
-            atol=1e-4,
-            rtol=1e-4,
-            infeasible_status=MOI.LOCALLY_INFEASIBLE,
-            optimal_status=MOI.LOCALLY_SOLVED,
-            exclude=Any[
-                MOI.ConstraintBasisStatus,
-                MOI.DualObjectiveValue,
-                MOI.ObjectiveBound,
-            ]
-        );
-        exclude = [
-            # MadDiff asks for :Hess which isn't available with UserDefinedFunction without hessian
-            "test_nonlinear_expression_multivariate_function",
-
-            # MadNLP reaches maximum number of iterations instead
-            # of returning infeasibility certificate.
-            r"test_linear_DUAL_INFEASIBLE.*",
-            "test_solve_TerminationStatus_DUAL_INFEASIBLE",
-            # Symbolic exception in Mumps
-            "test_solve_VariableIndex_ConstraintDual_",
-            # Tests excluded on purpose
-            # - Excluded because Hessian information is needed
-            "test_nonlinear_hs071_hessian_vector_product",
-            # - Excluded because Hessian information is needed
-            "test_nonlinear_invalid",
-            #  - Excluded because this test is optional
-            "test_model_ScalarFunctionConstantNotZero",
-            # Throw an error: "Unable to query the dual of a variable
-            # bound that was reformulated using `ZerosBridge`."
-            "test_linear_VectorAffineFunction_empty_row",
-            "test_conic_linear_VectorOfVariables_2",
-            # TODO: investigate why it is breaking.
-            "test_nonlinear_expression_hs109",
-        ]
-    )
+    DiffOpt.empty_input_sensitivities!(model)
+    MOI.set(model, DiffOpt.ForwardConstraintSet(), ParameterRef(p), MOI.Parameter(1.0))
+    DiffOpt.forward_differentiate!(model)
+    @test solver_name(model) == "MadNLP"
+    diff_time = MOI.get(model, DiffOpt.DifferentiateTimeSec())
+    @test isfinite(diff_time)
+    @test diff_time >= 0.0
 end

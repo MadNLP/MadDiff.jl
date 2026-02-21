@@ -1,20 +1,20 @@
 function MOI.set(
-        model::Optimizer,
+        wrapper::DiffOptWrapper,
         ::MadDiff.ForwardConstraintSet,
         ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
         set::MOI.Parameter{T},
     ) where {T}
-    model.forward.param_perturbations[ci] = set.value
-    return _clear_outputs!(model)  # keep KKT factorization
+    wrapper.forward.param_perturbations[ci] = set.value
+    return _clear_outputs!(wrapper)  # keep KKT factorization
 end
 
-function MadDiff.forward_differentiate!(model::Optimizer)
-    model.diff_time = @elapsed _forward_differentiate_impl!(model)
+function MadDiff.forward_differentiate!(wrapper::DiffOptWrapper)
+    wrapper.diff_time = @elapsed _forward_differentiate_impl!(wrapper)
     return nothing
 end
 
-function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
-    inner = model.inner
+function _forward_differentiate_impl!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
+    inner = wrapper.inner
     solver = inner.solver
 
     isnothing(solver) && error("Optimizer must be solved first")
@@ -23,13 +23,13 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     n_p = inner.param_n_p
     Δp = zeros(T, n_p)
-    for (ci, dp) in model.forward.param_perturbations
-        vi = model.param_ci_to_vi[ci]
+    for (ci, dp) in wrapper.forward.param_perturbations
+        vi = wrapper.param_ci_to_vi[ci]
         idx = inner.param_vi_to_idx[vi]
         Δp[idx] = dp
     end
 
-    sens = _get_sensitivity_solver!(model)
+    sens = _get_sensitivity_solver!(wrapper)
 
     VT = typeof(solver.y)
     if VT <: Vector
@@ -46,17 +46,17 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
 
     primal_vars = inner.param_var_order
     for (i, vi) in enumerate(primal_vars)
-        model.forward.primal_sensitivities[vi] = dx_cpu[i]
+        wrapper.forward.primal_sensitivities[vi] = dx_cpu[i]
     end
 
     n_con = NLPModels.get_ncon(solver.nlp)
     obj_sign = solver.cb.obj_sign
-    dy = _get_dy_cache!(model, n_con)
+    dy = _get_dy_cache!(wrapper, n_con)
     dy .= (.-obj_sign) .* dy_cpu
 
-    _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dy)
-    _store_bound_dual_sensitivities!(model, sens, result, inner)
-    model.forward.objective_sensitivity = result.dobj[]
+    _store_dual_sensitivities!(wrapper.forward.dual_sensitivities, inner, dy)
+    _store_bound_dual_sensitivities!(wrapper, sens, result, inner)
+    wrapper.forward.objective_sensitivity = result.dobj[]
     return
 end
 
@@ -89,8 +89,8 @@ function _store_dual_sensitivities!(dual_sensitivities, inner, dy)
     return
 end
 
-function _store_bound_dual_sensitivities!(model, sens, result, inner)
-    dsens = model.forward.dual_sensitivities
+function _store_bound_dual_sensitivities!(wrapper, sens, result, inner)
+    dsens = wrapper.forward.dual_sensitivities
 
     dzl = result.dzl isa Vector ? result.dzl : Array(result.dzl)
     dzu = result.dzu isa Vector ? result.dzu : Array(result.dzu)
@@ -119,14 +119,14 @@ function _store_bound_dual_sensitivities!(model, sens, result, inner)
     return
 end
 
-function MOI.get(model::Optimizer, ::MadDiff.ForwardVariablePrimal, vi::MOI.VariableIndex)
-    return model.forward.primal_sensitivities[vi]
+function MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ForwardVariablePrimal, vi::MOI.VariableIndex)
+    return wrapper.forward.primal_sensitivities[vi]
 end
 
-function MOI.get(model::Optimizer, ::MadDiff.ForwardConstraintDual, ci::MOI.ConstraintIndex)
-    return model.forward.dual_sensitivities[ci]
+function MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ForwardConstraintDual, ci::MOI.ConstraintIndex)
+    return wrapper.forward.dual_sensitivities[ci]
 end
 
-function MOI.get(model::Optimizer, ::MadDiff.ForwardObjectiveSensitivity)
-    return model.forward.objective_sensitivity
+function MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ForwardObjectiveSensitivity)
+    return wrapper.forward.objective_sensitivity
 end

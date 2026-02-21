@@ -1,34 +1,34 @@
 function MOI.set(
-        model::Optimizer,
+        wrapper::DiffOptWrapper,
         ::MadDiff.ReverseVariablePrimal,
         vi::MOI.VariableIndex,
         value::Real,
     )
-    model.reverse.primal_seeds[vi] = value
-    return _clear_outputs!(model)  # keep KKT factorization
+    wrapper.reverse.primal_seeds[vi] = value
+    return _clear_outputs!(wrapper)  # keep KKT factorization
 end
 
 function MOI.set(
-        model::Optimizer,
+        wrapper::DiffOptWrapper,
         ::MadDiff.ReverseConstraintDual,
         ci::MOI.ConstraintIndex,
         value::Real,
     )
-    model.reverse.dual_seeds[ci] = value
-    return _clear_outputs!(model)  # keep KKT factorization
+    wrapper.reverse.dual_seeds[ci] = value
+    return _clear_outputs!(wrapper)  # keep KKT factorization
 end
 
 function MOI.set(
-        model::Optimizer{OT, T},
+        wrapper::DiffOptWrapper{OT, T},
         ::MadDiff.ReverseObjectiveSensitivity,
         value::Real,
     ) where {OT, T}
-    model.reverse.dobj = value
-    return _clear_outputs!(model)  # keep KKT factorization
+    wrapper.reverse.dobj = value
+    return _clear_outputs!(wrapper)  # keep KKT factorization
 end
 
-function MadDiff.reverse_differentiate!(model::Optimizer)
-    model.diff_time = @elapsed _reverse_differentiate_impl!(model)
+function MadDiff.reverse_differentiate!(wrapper::DiffOptWrapper)
+    wrapper.diff_time = @elapsed _reverse_differentiate_impl!(wrapper)
     return nothing
 end
 
@@ -73,35 +73,35 @@ function _process_reverse_dual_input!(
     dL_dy[row] = val
 end
 
-function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
-    inner = model.inner
+function _reverse_differentiate_impl!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
+    inner = wrapper.inner
     solver = inner.solver
 
     isnothing(solver) && error("Optimizer must be solved first")
     MadDiff.assert_solved_and_feasible(solver)
     isempty(inner.parameters) && error("No parameters in model")
 
-    sens = _get_sensitivity_solver!(model)
+    sens = _get_sensitivity_solver!(wrapper)
 
     n_x = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(solver.nlp)
 
-    dL_dx = _get_dL_dx!(model, n_x)
-    for (vi, val) in model.reverse.primal_seeds
+    dL_dx = _get_dL_dx!(wrapper, n_x)
+    for (vi, val) in wrapper.reverse.primal_seeds
         idx = vi.value
         dL_dx[idx] = val
     end
 
-    dL_dy = _get_dL_dy!(model, n_con)
-    dL_dzl = _get_dL_dzl!(model, n_x)
-    dL_dzu = _get_dL_dzu!(model, n_x)
+    dL_dy = _get_dL_dy!(wrapper, n_con)
+    dL_dzl = _get_dL_dzl!(wrapper, n_x)
+    dL_dzu = _get_dL_dzu!(wrapper, n_x)
 
-    for (ci, val) in model.reverse.dual_seeds
+    for (ci, val) in wrapper.reverse.dual_seeds
         _process_reverse_dual_input!(ci, val, inner, dL_dy, dL_dzl, dL_dzu)
     end
 
     dL_dy .*= -solver.cb.obj_sign
-    dobj = model.reverse.dobj
+    dobj = wrapper.reverse.dobj
 
     VT = typeof(solver.y)
     if VT <: Vector
@@ -117,24 +117,24 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
         grad_p_cpu = Array(result.grad_p)
     end
 
-    for (ci, vi) in model.param_ci_to_vi
+    for (ci, vi) in wrapper.param_ci_to_vi
         idx = inner.param_vi_to_idx[vi]
-        model.reverse.param_outputs[ci] = grad_p_cpu[idx]
+        wrapper.reverse.param_outputs[ci] = grad_p_cpu[idx]
     end
     return
 end
 
 function MOI.get(
-        model::Optimizer,
+        wrapper::DiffOptWrapper,
         ::MadDiff.ReverseConstraintSet,
         ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
     ) where {T}
-    return MOI.Parameter(model.reverse.param_outputs[ci])
+    return MOI.Parameter(wrapper.reverse.param_outputs[ci])
 end
 
 function MadDiff.get_reverse_parameter(
-        model::Optimizer,
+        wrapper::DiffOptWrapper,
         ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
     ) where {T}
-    return model.reverse.param_outputs[ci]
+    return wrapper.reverse.param_outputs[ci]
 end

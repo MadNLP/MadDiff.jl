@@ -27,13 +27,13 @@ rev.grad_p  # gradient of the loss with respect to the parameters
 
 ## JuMP interface
 
-MadDiff aims to be a drop-in replacement for [DiffOpt](https://github.com/jump-dev/DiffOpt.jl) with MadNLP. Simply switch `DiffOpt.diff_optimizer(MadNLP.Optimizer)` for `MadDiff.diff_optimizer(MadNLP.Optimizer)` and enjoy the speedup!
+MadDiff aims to be a drop-in replacement for [DiffOpt](https://github.com/jump-dev/DiffOpt.jl) with MadNLP. Simply switch `DiffOpt.diff_model(MadNLP.Optimizer)` for `MadDiff.diff_model(MadNLP.Optimizer)` and enjoy the speedup!
 
 ```julia
 using JuMP, DiffOpt
 using MadDiff, MadNLP
 
-model = Model(MadDiff.diff_optimizer(MadNLP.Optimizer))  # use MadDiff.diff_optimizer
+model = MadDiff.diff_model(MadNLP.Optimizer)
 @variable(model, x)
 @variable(model, p in MOI.Parameter(1.0))
 @constraint(model, x >= 2p)
