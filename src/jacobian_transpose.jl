@@ -23,6 +23,18 @@ function _jacobian_transpose_fill_pv!(kkt, pv_lr::AbstractMatrix, pv_ur::Abstrac
     return nothing
 end
 
+function _transpose_mm!(out::AbstractMatrix, tmp::AbstractMatrix, raw, mat, map, rhs::AbstractMatrix, α)
+    transfer!(mat, raw, map)
+    fill!(tmp, zero(eltype(tmp)))
+    mul!(tmp, transpose(mat), rhs)
+    @. out += α * tmp
+    return out
+end
+
+function _transpose_mm!(out::AbstractMatrix, tmp::AbstractMatrix, block::SparseParamBlock, rhs::AbstractMatrix, α)
+    _transpose_mm!(out, tmp, block.raw, block.mat, block.map, rhs, α)
+end
+
 function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
     solver = sens.solver
     cb = solver.cb
@@ -41,7 +53,6 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
     n_ub = length(sens.kkt.u_diag)
 
     primal_seed_rows = 1:n_var_cb
-    primal_rows = 1:n_primal
     dual_rows = n_primal + 1:n_primal + n_dual
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + n_ub
@@ -55,8 +66,8 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
     pack_dzl!(view(W, lb_rows, r_dzl), cb, id_x, view(tcache.dz_work, :, r_dzl))
     pack_dzu!(view(W, ub_rows, r_dzu), cb, id_x, view(tcache.dz_work, :, r_dzu))
 
-    grad!(solver.nlp, tcache.x_nlp, tcache.grad_p)
-    pack_dx!(view(W, primal_seed_rows, c_obj:c_obj), cb, reshape(tcache.grad_p, :, 1))
+    grad!(solver.nlp, tcache.x_nlp, tcache.grad_x)
+    pack_dx!(view(W, primal_seed_rows, c_obj:c_obj), cb, reshape(tcache.grad_x, :, 1))
     return nothing
 end
 
@@ -87,6 +98,7 @@ end
 function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::MadDiffSolver{T}, tcache) where {T}
     solver = sens.solver
     nlp = solver.nlp
+    pmeta = nlp.pmeta
     cb = solver.cb
     n_x = get_nvar(nlp)
     n_con = get_ncon(nlp)
@@ -100,18 +112,27 @@ function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::Mad
     unpack_y!(tcache.y_nlp, cb, solver.y)
     tcache.y_nlp .*= σ_scaled
 
-    hess_param!(nlp, tcache.x_nlp, tcache.y_nlp, tcache.hess_nlp; obj_weight = σ_scaled)
-    jac_param!(nlp, tcache.x_nlp, tcache.jac_nlp)
-    lvar_jac_param!(nlp, tcache.dlvar_nlp)
-    uvar_jac_param!(nlp, tcache.duvar_nlp)
-    lcon_jac_param!(nlp, tcache.dlcon_nlp)
-    ucon_jac_param!(nlp, tcache.ducon_nlp)
-    grad_param!(nlp, tcache.x_nlp, tcache.grad_p)
+    fill!(tcache.hess.raw.V, zero(T))
+    fill!(tcache.jac.raw.V, zero(T))
+    fill!(tcache.lvar.raw.V, zero(T))
+    fill!(tcache.uvar.raw.V, zero(T))
+    fill!(tcache.lcon.raw.V, zero(T))
+    fill!(tcache.ucon.raw.V, zero(T))
+    fill!(tcache.grad_p, zero(T))
 
-    tcache.grad_all .= transpose(tcache.hess_nlp) * tcache.dx_solved
+    pmeta.hess_param_available && hess_param_coord!(nlp, tcache.x_nlp, tcache.y_nlp, tcache.hess.raw.V; obj_weight = σ_scaled)
+    pmeta.jac_param_available && jac_param_coord!(nlp, tcache.x_nlp, tcache.jac.raw.V)
+    pmeta.lvar_jac_available && lvar_jac_param_coord!(nlp, tcache.lvar.raw.V)
+    pmeta.uvar_jac_available && uvar_jac_param_coord!(nlp, tcache.uvar.raw.V)
+    pmeta.lcon_jac_available && lcon_jac_param_coord!(nlp, tcache.lcon.raw.V)
+    pmeta.ucon_jac_available && ucon_jac_param_coord!(nlp, tcache.ucon.raw.V)
+    pmeta.grad_param_available && grad_param!(nlp, tcache.x_nlp, tcache.grad_p)
+
+    fill!(tcache.grad_all, zero(T))
+    pmeta.hess_param_available && _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.hess, tcache.dx_solved, one(T))
 
     tcache.dy_nlp .= tcache.dy_solved .* σ_scaled
-    tcache.grad_all .+= transpose(tcache.jac_nlp) * tcache.dy_nlp
+    pmeta.jac_param_available && _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.jac, tcache.dy_nlp, one(T))
     view(tcache.grad_all, :, c_obj) .-= tcache.grad_p
 
     n_primal = length(sens.kkt.pr_diag)
@@ -120,26 +141,27 @@ function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::Mad
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + length(sens.kkt.u_diag)
 
-    _jacobian_transpose_fill_pv!(
-        sens.kkt,
-        tcache.pv_lr,
-        tcache.pv_ur,
-        cb,
-        view(tcache.W, lb_rows, :),
-        view(tcache.W, ub_rows, :),
-    )
+    _jacobian_transpose_fill_pv!(sens.kkt, tcache.pv_lr, tcache.pv_ur, cb, view(tcache.W, lb_rows, :), view(tcache.W, ub_rows, :))
 
-    unpack_dx!(tcache.x_lr, cb, view(tcache.pv_lr, 1:cb.nvar, :))
-    tcache.grad_all .-= transpose(tcache.dlvar_nlp) * tcache.x_lr
-    
-    unpack_dx!(tcache.x_ur, cb, view(tcache.pv_ur, 1:cb.nvar, :))
-    tcache.grad_all .+= transpose(tcache.duvar_nlp) * tcache.x_ur
+    if pmeta.lvar_jac_available
+        unpack_dx!(tcache.x_lr, cb, view(tcache.pv_lr, 1:cb.nvar, :))
+        _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.lvar, tcache.x_lr, -one(T))
+    end
 
-    unpack_slack!(tcache.y_lr, cb, tcache.pv_lr, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
-    tcache.grad_all .-= transpose(tcache.dlcon_nlp) * tcache.y_lr
-    
-    unpack_slack!(tcache.y_ur, cb, tcache.pv_ur, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
-    tcache.grad_all .+= transpose(tcache.ducon_nlp) * tcache.y_ur
+    if pmeta.uvar_jac_available
+        unpack_dx!(tcache.x_ur, cb, view(tcache.pv_ur, 1:cb.nvar, :))
+        _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.uvar, tcache.x_ur, one(T))
+    end
+
+    if pmeta.lcon_jac_available
+        unpack_slack!(tcache.y_lr, cb, tcache.pv_lr, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
+        _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.lcon, tcache.y_lr, -one(T))
+    end
+
+    if pmeta.ucon_jac_available
+        unpack_slack!(tcache.y_ur, cb, tcache.pv_ur, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
+        _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.ucon, tcache.y_ur, one(T))
+    end
 
     tcache.grad_all .*= -one(T)
 

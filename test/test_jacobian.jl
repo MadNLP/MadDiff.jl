@@ -77,4 +77,17 @@ using NLPModels
     @objective(model_mp, Min, (x + p1)^2 + (y - p2)^4 + z^2)
     optimize!(model_mp)
     _check_consistency(MadDiff.MadDiffSolver(unsafe_backend(model_mp).inner.solver, config = MadDiffConfig(kkt_system = MadNLP.SparseUnreducedKKTSystem)); atol = 1e-8)
+
+    model_rect = Model(MadDiff.diff_optimizer(MadNLP.Optimizer; linear_solver = MadNLP.MumpsSolver))
+    set_silent(model_rect)
+    @variable(model_rect, x >= 0.0)
+    @variable(model_rect, y)
+    @variable(model_rect, z)
+    @variable(model_rect, p1 in MOI.Parameter(1.0))
+    @variable(model_rect, p2 in MOI.Parameter(0.5))
+    @constraint(model_rect, x + y + z == p1)
+    @constraint(model_rect, y - z >= p2)
+    @objective(model_rect, Min, (x - 1)^2 + (y + p2)^2 + (z - p1)^2)
+    optimize!(model_rect)
+    _check_consistency(MadDiff.MadDiffSolver(unsafe_backend(model_rect).inner.solver); atol = 1e-8)
 end

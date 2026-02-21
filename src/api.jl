@@ -49,7 +49,6 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     n_p = solver.nlp.pmeta.nparam
 
     cb = solver.cb
-    n_con = get_ncon(solver.nlp)
 
     x_array = full(solver.x)
     n_con = get_ncon(solver.nlp)
@@ -63,14 +62,17 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     VI = typeof(cb.ind_lb)
     VB = typeof(is_eq)
     VT = typeof(x_array)
-    MT = typeof(create_array(cb, T, get_nvar(solver.nlp), n_p))
-    WM = typeof(spzeros_like(cb, T, 0, 0))
     VK = UnreducedKKTVector{T,VT,VI}
     PV = PrimalVector{T,VT,VI}
     FC = JVPCache{VT, VK, PV}
     RC = VJPCache{VT, VK, PV}
-    JC = JacobianCache{VT, MT, WM}
-    TC = JacobianTransposeCache{VT, MT, WM}
+    MT = typeof(zeros_like(cb, T, 0, 0))
+    _vi_int = create_array(cb, Int, 0)
+    _dummy_coo = SparseMatrixCOO(0, 0, _vi_int, _vi_int, similar(x_array, 0))
+    WM_jac = typeof(first(coo_to_csc(_dummy_coo)))
+    WM_jact = typeof(spzeros_like(cb, T, 0, 0))
+    JC = JacobianCache{VT, MT, WM_jac, VI}
+    TC = JacobianTransposeCache{VT, MT, WM_jact}
     return MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC}(
         solver, config, kkt, n_p, is_eq,
         nothing, nothing, nothing, nothing,
