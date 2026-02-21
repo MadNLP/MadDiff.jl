@@ -81,6 +81,7 @@ function MOI.empty!(m::Optimizer)
     empty!(m.forward.param_perturbations)
     empty!(m.reverse.primal_seeds)
     empty!(m.reverse.dual_seeds)
+    empty!(m.reverse.vector_dual_seeds)
     m.reverse.dobj = nothing
     return _invalidate_sensitivity!(m)
 end
@@ -103,6 +104,7 @@ function MadDiff.empty_input_sensitivities!(model::Optimizer)
     empty!(model.forward.param_perturbations)
     empty!(model.reverse.primal_seeds)
     empty!(model.reverse.dual_seeds)
+    empty!(model.reverse.vector_dual_seeds)
     model.reverse.dobj = nothing
     return _clear_outputs!(model)
 end
@@ -110,6 +112,7 @@ end
 function _clear_outputs!(m::Optimizer{OT, T}) where {OT, T}
     empty!(m.forward.primal_sensitivities)
     empty!(m.forward.dual_sensitivities)
+    empty!(m.forward.vector_dual_sensitivities)
     m.forward.objective_sensitivity = zero(T)
     empty!(m.reverse.param_outputs)
     return m.diff_time = zero(T)

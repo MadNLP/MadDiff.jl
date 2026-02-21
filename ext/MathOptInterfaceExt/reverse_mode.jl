@@ -19,6 +19,16 @@ function MOI.set(
 end
 
 function MOI.set(
+        model::Optimizer,
+        ::MadDiff.ReverseConstraintDual,
+        ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.VectorNonlinearOracle{Float64}},
+        value::AbstractVector,
+    )
+    model.reverse.vector_dual_seeds[ci] = value
+    return _clear_outputs!(model)  # keep KKT factorization
+end
+
+function MOI.set(
         model::Optimizer{OT, T},
         ::MadDiff.ReverseObjectiveSensitivity,
         value::Real,
@@ -73,6 +83,15 @@ function _process_reverse_dual_input!(
     dL_dy[row] = val
 end
 
+function _process_reverse_dual_input!(
+    ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.VectorNonlinearOracle{Float64}},
+    val::AbstractVector,
+    inner, dL_dy, dL_dzl, dL_dzu,
+)
+    rows = _vno_rows(inner, ci)
+    dL_dy[rows] .= val
+end
+
 function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     inner = model.inner
     solver = inner.solver
@@ -97,6 +116,9 @@ function _reverse_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     dL_dzu = _get_dL_dzu!(model, n_x)
 
     for (ci, val) in model.reverse.dual_seeds
+        _process_reverse_dual_input!(ci, val, inner, dL_dy, dL_dzl, dL_dzu)
+    end
+    for (ci, val) in model.reverse.vector_dual_seeds
         _process_reverse_dual_input!(ci, val, inner, dL_dy, dL_dzl, dL_dzu)
     end
 

@@ -54,7 +54,7 @@ function _forward_differentiate_impl!(model::Optimizer{OT, T}) where {OT, T}
     dy = _get_dy_cache!(model, n_con)
     dy .= (.-obj_sign) .* dy_cpu
 
-    _store_dual_sensitivities!(model.forward.dual_sensitivities, inner, dy)
+    _store_dual_sensitivities!(model.forward.dual_sensitivities, model.forward.vector_dual_sensitivities, inner, dy)
     _store_bound_dual_sensitivities!(model, sens, result, inner)
     model.forward.objective_sensitivity = result.dobj[]
     return
@@ -68,10 +68,30 @@ function _constraint_row(inner, ci::MOI.ConstraintIndex{F, S}) where {F, S}
     end
 end
 
-function _store_dual_sensitivities!(dual_sensitivities, inner, dy)
+function _vno_rows(
+    inner,
+    ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.VectorNonlinearOracle{Float64}},
+)
+    offset = length(inner.qp_data)
+    for i in 1:(ci.value - 1)
+        _, s = inner.vector_nonlinear_oracle_constraints[i]
+        offset += s.set.output_dimension
+    end
+    _, s = inner.vector_nonlinear_oracle_constraints[ci.value]
+    return offset .+ (1:s.set.output_dimension)
+end
+
+function _store_dual_sensitivities!(dual_sensitivities, vector_dual_sensitivities, inner, dy)
     for (F, S) in MOI.get(inner, MOI.ListOfConstraintTypesPresent())
         F == MOI.VariableIndex && continue
         S <: MOI.Parameter && continue
+        if F == MOI.VectorOfVariables && S == MOI.VectorNonlinearOracle{Float64}
+            for ci in MOI.get(inner, MOI.ListOfConstraintIndices{F, S}())
+                rows = _vno_rows(inner, ci)
+                vector_dual_sensitivities[ci] = dy[rows]
+            end
+            continue
+        end
         for ci in MOI.get(inner, MOI.ListOfConstraintIndices{F, S}())
             row = _constraint_row(inner, ci)
             dual_sensitivities[ci] = dy[row]
@@ -125,6 +145,14 @@ end
 
 function MOI.get(model::Optimizer, ::MadDiff.ForwardConstraintDual, ci::MOI.ConstraintIndex)
     return model.forward.dual_sensitivities[ci]
+end
+
+function MOI.get(
+    model::Optimizer,
+    ::MadDiff.ForwardConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.VectorNonlinearOracle{Float64}},
+)
+    return model.forward.vector_dual_sensitivities[ci]
 end
 
 function MOI.get(model::Optimizer, ::MadDiff.ForwardObjectiveSensitivity)
