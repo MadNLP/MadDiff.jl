@@ -54,6 +54,11 @@ export jacobian_vector_product!, vector_jacobian_product!
 export jacobian!, jacobian_transpose!
 export reset_sensitivity_cache!
 
+"""
+    diff_model(optimizer_constructor; kwargs...)
+
+Create a JuMP Model with MadDiff wrapping `optimizer_constructor`.
+"""
 function diff_model(args...; kwargs...)
     error(
         "`MadDiff.diff_model` requires the `DiffOpt` extension. " *

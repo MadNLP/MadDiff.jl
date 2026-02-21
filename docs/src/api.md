@@ -1,7 +1,7 @@
 # API Reference
 
 ```@docs
-MadDiff.diff_optimizer
+MadDiff.diff_model
 MadDiff.MadDiffSolver
 MadDiff.MadDiffConfig
 MadDiff.reset_sensitivity_cache!
