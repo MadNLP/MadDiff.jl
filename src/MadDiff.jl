@@ -3,7 +3,7 @@ module MadDiff
 import MadNLP
 import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     set_aug_diagonal!, set_aug_rhs!, get_slack_regularization, dual_inf_perturbation!,
-    inertia_correction!, solve_kkt!, solve_linear_system!, multi_solve!, solve_refine!, improve!, RichardsonIterator,
+    inertia_correction!, solve_kkt!, solve_linear_system!, solve_refine!, improve!, RichardsonIterator,
     full, primal, variable, slack, dual, dual_lb, dual_ub, primal_dual, num_variables,
     SOLVE_SUCCEEDED, SOLVED_TO_ACCEPTABLE_LEVEL,
     create_kkt_system, initialize!,
@@ -12,6 +12,7 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     SparseCondensedKKTSystem, DenseCondensedKKTSystem,
     ScaledSparseKKTSystem, SparseKKTSystem, DenseKKTSystem, 
     AbstractKKTVector, UnreducedKKTVector, PrimalVector,
+    SparseMatrixCOO, coo_to_csc, transfer!,
     unpack_x!, unpack_y!, unpack_z!,
     eval_jac_wrapper!, eval_lag_hess_wrapper!,
     AbstractCallback, SparseCallback, MakeParameter, create_array,
@@ -20,10 +21,14 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
 import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
 import ParametricNLPModels: hpprod!, jpprod!,
                             lvar_jpprod!, uvar_jpprod!, lcon_jpprod!, ucon_jpprod!,
-                            grad_param!, hess_param!, jac_param!, lvar_jac_param!, uvar_jac_param!, lcon_jac_param!, ucon_jac_param!,
+                            grad_param!, hess_param_structure, hess_param_coord!, jac_param_structure, jac_param_coord!,
+                            lvar_jac_param_structure, lvar_jac_param_coord!,
+                            uvar_jac_param_structure, uvar_jac_param_coord!,
+                            lcon_jac_param_structure, lcon_jac_param_coord!,
+                            ucon_jac_param_structure, ucon_jac_param_coord!,
                             hptprod!, jptprod!,
                             lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
-import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
+import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric, diagind
 
 include("utils/packing.jl")
 include("utils/batch_packing.jl")
@@ -36,6 +41,7 @@ include("KKT/Dense/augmented.jl")
 include("KKT/Dense/condensed.jl")
 include("api.jl")
 include("utils/cache.jl")
+include("utils/jac_cache.jl")
 include("utils/utils.jl")
 include("KKT/kkt.jl")
 include("jvp.jl")

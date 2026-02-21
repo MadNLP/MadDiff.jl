@@ -4,6 +4,7 @@ function jacobian_vector_product!(
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
+    pmeta = nlp.pmeta
     cache = get_jvp_cache!(sens)
 
     unpack_x!(cache.x_nlp, cb, variable(solver.x))
@@ -12,12 +13,19 @@ function jacobian_vector_product!(
     x = cache.x_nlp
     y = cache.y_nlp
 
-    hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
-    jpprod!(nlp, x, Δp, cache.jpv_nlp)
-    lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
-    uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
-    lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
-    ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
+    fill!(cache.hpv_nlp, zero(T))
+    fill!(cache.jpv_nlp, zero(T))
+    fill!(cache.dlvar_nlp, zero(T))
+    fill!(cache.duvar_nlp, zero(T))
+    fill!(cache.dlcon_nlp, zero(T))
+    fill!(cache.ducon_nlp, zero(T))
+
+    pmeta.hpprod_available && hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
+    pmeta.jpprod_available && jpprod!(nlp, x, Δp, cache.jpv_nlp)
+    pmeta.lvar_jpprod_available && lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
+    pmeta.uvar_jpprod_available && uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
+    pmeta.lcon_jpprod_available && lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
+    pmeta.ucon_jpprod_available && ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
 
     pack_jvp!(sens, cache)
     solve_jvp!(sens)
@@ -33,10 +41,15 @@ function compute_objective_sensitivity!(
 ) where {T}
     solver = sens.solver
     nlp = solver.nlp
+    pmeta = nlp.pmeta
     x = cache.x_nlp
 
     grad!(nlp, x, cache.grad_x)
-    grad_param!(nlp, x, cache.grad_p)
+    if pmeta.grad_param_available
+        grad_param!(nlp, x, cache.grad_p)
+    else
+        fill!(cache.grad_p, zero(T))
+    end
 
     result.dobj[] = dot(cache.grad_x, result.dx) + dot(cache.grad_p, Δp)
 
@@ -59,8 +72,8 @@ function pack_jvp!(sens::MadDiffSolver{T}, cache) where {T}
     pack_cons!(cache.ducon_dp, cb, cache.ducon_nlp)
     pack_dx!(variable(cache.dlvar_dp), cb, cache.dlvar_nlp)
     pack_dx!(variable(cache.duvar_dp), cb, cache.duvar_nlp)
-    pack_slack!(slack(cache.dlvar_dp), cb, cache.dlcon_dp)
-    pack_slack!(slack(cache.duvar_dp), cb, cache.ducon_dp)
+    pack_slack!(slack(cache.dlvar_dp), cb, cache.dlcon_nlp)
+    pack_slack!(slack(cache.duvar_dp), cb, cache.ducon_nlp)
     return nothing
 end
 

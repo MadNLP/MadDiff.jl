@@ -96,6 +96,7 @@ end
 function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing) where {T}
     solver = sens.solver
     nlp = solver.nlp
+    pmeta = nlp.pmeta
     cb = solver.cb
     cache = get_vjp_cache!(sens)
     w = cache.kkt_rhs
@@ -114,36 +115,48 @@ function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing
     fill!(grad_p, zero(T))
 
     unpack_x!(x, cb, variable(solver.x))
-    unpack_y!(y, cb, solver.y)
-    y .*= σ_scaled
-    hptprod!(nlp, x, y, dx, grad_p; obj_weight = σ_scaled)
+    if pmeta.hptprod_available
+        unpack_y!(y, cb, solver.y)
+        y .*= σ_scaled
+        hptprod!(nlp, x, y, dx, grad_p; obj_weight = σ_scaled)
+    end
 
-    if !isnothing(dobj)
+    if !isnothing(dobj) && pmeta.grad_param_available
         grad_param!(nlp, x, tmp)
         axpy!(-dobj, tmp, grad_p)
     end
     
-    dy .= result.dy .* σ_scaled
-    jptprod!(nlp, x, dy, tmp)
-    grad_p .+= tmp
+    if pmeta.jptprod_available
+        dy .= result.dy .* σ_scaled
+        jptprod!(nlp, x, dy, tmp)
+        grad_p .+= tmp
+    end
 
     vjp_fill_pv!(sens.kkt, pvl, pvu, w)
 
-    unpack_dx!(x, cb, variable(pvl))
-    lvar_jptprod!(nlp, x, tmp)
-    grad_p .-= tmp
+    if pmeta.lvar_jptprod_available
+        unpack_dx!(x, cb, variable(pvl))
+        lvar_jptprod!(nlp, x, tmp)
+        grad_p .-= tmp
+    end
 
-    unpack_dx!(x, cb, variable(pvu))
-    uvar_jptprod!(nlp, x, tmp)
-    grad_p .+= tmp
+    if pmeta.uvar_jptprod_available
+        unpack_dx!(x, cb, variable(pvu))
+        uvar_jptprod!(nlp, x, tmp)
+        grad_p .+= tmp
+    end
 
-    unpack_slack!(y, cb, pvl, sens.is_eq, dual(w))
-    lcon_jptprod!(nlp, y, tmp)
-    grad_p .-= tmp
+    if pmeta.lcon_jptprod_available
+        unpack_slack!(y, cb, pvl, sens.is_eq, dual(w))
+        lcon_jptprod!(nlp, y, tmp)
+        grad_p .-= tmp
+    end
 
-    unpack_slack!(y, cb, pvu, sens.is_eq, dual(w))
-    ucon_jptprod!(nlp, y, tmp)
-    grad_p .+= tmp
+    if pmeta.ucon_jptprod_available
+        unpack_slack!(y, cb, pvu, sens.is_eq, dual(w))
+        ucon_jptprod!(nlp, y, tmp)
+        grad_p .+= tmp
+    end
 
     grad_p .*= -one(T)
 

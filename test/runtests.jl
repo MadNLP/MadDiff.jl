@@ -1,7 +1,7 @@
 using Test, Random, LinearAlgebra
 using MadDiff
 using MadNLP, MadIPM, MadNCL, HybridKKT
-using NLPModels, CUDA, MadNLPGPU, MadNLPTests, QuadraticModels
+using NLPModels, CUDA, MadNLPGPU, MadNLPTests, QuadraticModels, ExaModels
 using JuMP, DiffOpt, MathOptInterface
 const MOI = MathOptInterface
 
