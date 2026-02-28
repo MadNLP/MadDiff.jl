@@ -120,7 +120,7 @@ const SKIP_PROBLEMS = Set([
     "nlp_trig",  # TODO: investigate (condensed)
 ])
 
-include("test_jacobian.jl")
+include("test_exa.jl")
 
 const DX_TOL = 1e-6
 const DY_TOL = 1e-3  # TODO: investigate
