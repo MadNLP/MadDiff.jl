@@ -2,7 +2,6 @@ module MathOptInterfaceExt
 
 import MadDiff
 import MadNLP; const NLPModels = MadNLP.NLPModels
-import ParametricNLPModels
 import MathOptInterface as MOI
 
 mutable struct ForwardModeData{T}
