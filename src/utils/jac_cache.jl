@@ -67,15 +67,15 @@ function _make_sparse_param_csc(cb, ::Type{T}, n_rows, n_p, rows_h, cols_h) wher
     return SparseParamBlock(raw, mat, map)
 end
 
-function _load_param_structures(pmeta, nlp)
+function _load_param_structures(meta, nlp)
     empty = (Int[], Int[])
     return (
-        hess = pmeta.hess_param_available ? hess_param_structure(nlp)     : empty,
-        jac  = pmeta.jac_param_available  ? jac_param_structure(nlp)      : empty,
-        lvar = pmeta.lvar_jac_available   ? lvar_jac_param_structure(nlp) : empty,
-        uvar = pmeta.uvar_jac_available   ? uvar_jac_param_structure(nlp) : empty,
-        lcon = pmeta.lcon_jac_available   ? lcon_jac_param_structure(nlp) : empty,
-        ucon = pmeta.ucon_jac_available   ? ucon_jac_param_structure(nlp) : empty,
+        hess = meta.nnzhp != 0     ? hess_param_structure(nlp)     : empty,
+        jac  = meta.nnzjp != 0     ? jac_param_structure(nlp)      : empty,
+        lvar = meta.nnzjplvar != 0 ? lvar_jac_param_structure(nlp) : empty,
+        uvar = meta.nnzjpuvar != 0 ? uvar_jac_param_structure(nlp) : empty,
+        lcon = meta.nnzjplcon != 0 ? lcon_jac_param_structure(nlp) : empty,
+        ucon = meta.nnzjpucon != 0 ? ucon_jac_param_structure(nlp) : empty,
     )
 end
 
@@ -176,7 +176,7 @@ function get_jac_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.jac_cache)
         cb = sens.solver.cb
         nlp = sens.solver.nlp
-        pmeta = nlp.pmeta
+        meta = nlp.meta
         n_x = get_nvar(sens.solver.nlp)
         n_con = get_ncon(sens.solver.nlp)
         n_p = sens.n_p
@@ -189,7 +189,7 @@ function get_jac_cache!(sens::MadDiffSolver{T}) where {T}
         n_rhs = length(sens.kkt.pr_diag) + length(sens.kkt.du_diag) +
             length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
 
-        st = _load_param_structures(pmeta, nlp)
+        st = _load_param_structures(meta, nlp)
         hess_rows_h, hess_cols_h = st.hess
         jac_rows_h, jac_cols_h   = st.jac
         lvar_rows_h, lvar_cols_h = st.lvar
@@ -355,7 +355,7 @@ function get_jact_cache!(sens::MadDiffSolver{T}) where {T}
     if isnothing(sens.jact_cache)
         cb = sens.solver.cb
         nlp = sens.solver.nlp
-        pmeta = nlp.pmeta
+        meta = nlp.meta
         n_x = get_nvar(sens.solver.nlp)
         n_con = get_ncon(sens.solver.nlp)
         n_p = sens.n_p
@@ -365,7 +365,7 @@ function get_jact_cache!(sens::MadDiffSolver{T}) where {T}
             length(sens.kkt.l_diag) + length(sens.kkt.u_diag)
         n_seed = 3 * n_x + n_con + 1
 
-        st = _load_param_structures(pmeta, nlp)
+        st = _load_param_structures(meta, nlp)
         hess_rows_h, hess_cols_h = st.hess
         jac_rows_h, jac_cols_h   = st.jac
         lvar_rows_h, lvar_cols_h = st.lvar
@@ -449,11 +449,27 @@ function JacobianTransposeResult(sens::MadDiffSolver{T}) where {T}
     )
 end
 
-has_hess_param(jcache::JacobianCache)       = !isempty(jcache.blk_hess.src)
-has_jac_param(jcache::JacobianCache)        = !isempty(jcache.blk_jac.src)
-has_lcon_eq_param(jcache::JacobianCache)    = !isempty(jcache.blk_lcon_eq.src)
-has_ucon_eq_param(jcache::JacobianCache)    = !isempty(jcache.blk_ucon_eq.src)
-has_lvar_param(jcache::JacobianCache)       = !isempty(jcache.blk_lvar.src)
-has_uvar_param(jcache::JacobianCache)       = !isempty(jcache.blk_uvar.src)
-has_lcon_slack_param(jcache::JacobianCache) = !isempty(jcache.blk_lcon_slack.src)
-has_ucon_slack_param(jcache::JacobianCache) = !isempty(jcache.blk_ucon_slack.src)
+has_hess_param(jcache::JacobianCache, meta)       = meta.nnzhp != 0     && !isempty(jcache.blk_hess.src)
+has_jac_param(jcache::JacobianCache, meta)        = meta.nnzjp != 0     && !isempty(jcache.blk_jac.src)
+has_lcon_eq_param(jcache::JacobianCache, meta)    = meta.nnzjplcon != 0 && !isempty(jcache.blk_lcon_eq.src)
+has_ucon_eq_param(jcache::JacobianCache, meta)    = meta.nnzjpucon != 0 && !isempty(jcache.blk_ucon_eq.src)
+has_lvar_param(jcache::JacobianCache, meta)       = meta.nnzjplvar != 0 && !isempty(jcache.blk_lvar.src)
+has_uvar_param(jcache::JacobianCache, meta)       = meta.nnzjpuvar != 0 && !isempty(jcache.blk_uvar.src)
+has_lcon_slack_param(jcache::JacobianCache, meta) = meta.nnzjplcon != 0 && !isempty(jcache.blk_lcon_slack.src)
+has_ucon_slack_param(jcache::JacobianCache, meta) = meta.nnzjpucon != 0 && !isempty(jcache.blk_ucon_slack.src)
+
+has_hess_param(cache::JacobianTransposeCache, meta) = meta.nnzhp != 0     && !isempty(cache.hess.raw.V)
+has_jac_param(cache::JacobianTransposeCache, meta)  = meta.nnzjp != 0     && !isempty(cache.jac.raw.V)
+has_lvar_param(cache::JacobianTransposeCache, meta) = meta.nnzjplvar != 0 && !isempty(cache.lvar.raw.V)
+has_uvar_param(cache::JacobianTransposeCache, meta) = meta.nnzjpuvar != 0 && !isempty(cache.uvar.raw.V)
+has_lcon_param(cache::JacobianTransposeCache, meta) = meta.nnzjplcon != 0 && !isempty(cache.lcon.raw.V)
+has_ucon_param(cache::JacobianTransposeCache, meta) = meta.nnzjpucon != 0 && !isempty(cache.ucon.raw.V)
+
+has_hess_param(::Union{JVPCache, VJPCache}, meta) = meta.nnzhp != 0
+has_jac_param(::Union{JVPCache, VJPCache}, meta)  = meta.nnzjp != 0
+has_lvar_param(::Union{JVPCache, VJPCache}, meta) = meta.nnzjplvar != 0
+has_uvar_param(::Union{JVPCache, VJPCache}, meta) = meta.nnzjpuvar != 0
+has_lcon_param(::Union{JVPCache, VJPCache}, meta) = meta.nnzjplcon != 0
+has_ucon_param(::Union{JVPCache, VJPCache}, meta) = meta.nnzjpucon != 0
+
+has_grad_param(cache, meta) = meta.nnzgp != 0

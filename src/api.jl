@@ -46,7 +46,7 @@ end
 function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig()) where {T}
     assert_solved_and_feasible(solver)
 
-    n_p = solver.nlp.pmeta.nparam
+    n_p = solver.nlp.meta.nparam
 
     cb = solver.cb
 

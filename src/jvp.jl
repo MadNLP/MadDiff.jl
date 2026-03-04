@@ -4,7 +4,7 @@ function jacobian_vector_product!(
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
-    pmeta = nlp.pmeta
+    meta = nlp.meta
     cache = get_jvp_cache!(sens)
 
     unpack_x!(cache.x_nlp, cb, variable(solver.x))
@@ -20,12 +20,12 @@ function jacobian_vector_product!(
     fill!(cache.dlcon_nlp, zero(T))
     fill!(cache.ducon_nlp, zero(T))
 
-    pmeta.hpprod_available && hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
-    pmeta.jpprod_available && jpprod!(nlp, x, Δp, cache.jpv_nlp)
-    pmeta.lvar_jpprod_available && lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
-    pmeta.uvar_jpprod_available && uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
-    pmeta.lcon_jpprod_available && lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
-    pmeta.ucon_jpprod_available && ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
+    has_hess_param(cache, meta) && hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
+    has_jac_param(cache, meta)  && jpprod!(nlp, x, Δp, cache.jpv_nlp)
+    has_lvar_param(cache, meta) && lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
+    has_uvar_param(cache, meta) && uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
+    has_lcon_param(cache, meta) && lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
+    has_ucon_param(cache, meta) && ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
 
     pack_jvp!(sens, cache)
     solve_jvp!(sens)
@@ -41,11 +41,11 @@ function compute_objective_sensitivity!(
 ) where {T}
     solver = sens.solver
     nlp = solver.nlp
-    pmeta = nlp.pmeta
+    meta = nlp.meta
     x = cache.x_nlp
 
     grad!(nlp, x, cache.grad_x)
-    if pmeta.grad_param_available
+    if has_grad_param(cache, meta)
         grad_param!(nlp, x, cache.grad_p)
     else
         fill!(cache.grad_p, zero(T))
