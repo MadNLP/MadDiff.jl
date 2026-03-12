@@ -1,3 +1,18 @@
+const _ActiveSetKKTUnion{T} = Union{
+    DenseActiveSetKKTSystem{T},
+    SparseActiveSetKKTSystem{T},
+    DenseCondensedActiveSetKKTSystem{T},
+    SparseCondensedActiveSetKKTSystem{T},
+}
+
+function _ensure_quasi_definite!(kkt::_ActiveSetKKTUnion{T}) where T
+    ε = eps(T)^(T(3)/T(4))  # ~5.6e-12 for Float64
+    @. kkt.pr_diag = max(kkt.pr_diag, ε)
+    @. kkt.du_diag = min(kkt.du_diag, -ε)
+    kkt.reg .= max.(kkt.reg, ε)
+    return
+end
+
 function get_sensitivity_kkt(solver, config::MadDiffConfig)
     reusing_solver_kkt = !_needs_new_kkt(config)
 
@@ -13,7 +28,18 @@ function get_sensitivity_kkt(solver, config::MadDiffConfig)
         )
     end
     if !(reusing_solver_kkt && config.skip_kkt_refactorization)
-        refactorize_kkt!(kkt, solver)
+        if kkt isa _ActiveSetKKTUnion
+            set_aug_diagonal!(kkt, solver)
+            # Active-set path skips inertia correction, so add small
+            # regularization to ensure quasi-definiteness.
+            _ensure_quasi_definite!(kkt)
+            MadNLP.compress_hessian!(kkt)
+            MadNLP.compress_jacobian!(kkt)
+            MadNLP.build_kkt!(kkt)
+            MadNLP.factorize_kkt!(kkt)
+        else
+            refactorize_kkt!(kkt, solver)
+        end
     end
     return kkt
 end
@@ -46,6 +72,7 @@ function build_new_kkt(
 
     opts = isnothing(kkt_options) ? Dict{Symbol, Any}() : copy(kkt_options)
     !isnothing(linear_solver_options) && (opts[:opt_linear_solver] = linear_solver_options)
+    opts[:solver] = solver
 
     kkt_new = create_kkt_system(kkt_type, cb, linear_solver_type; opts...)
     initialize!(kkt_new)

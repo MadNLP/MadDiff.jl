@@ -29,6 +29,8 @@ import NLPModels: hpprod!, jpprod!,
                             hptprod!, jptprod!,
                             lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
 import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric, diagind
+import SparseArrays: nonzeros
+import AcceleratedKernels as AK
 
 include("utils/packing.jl")
 include("utils/batch_packing.jl")
@@ -39,6 +41,11 @@ include("KKT/Sparse/unreduced.jl")
 include("KKT/Sparse/condensed.jl")
 include("KKT/Dense/augmented.jl")
 include("KKT/Dense/condensed.jl")
+include("KKT/identify_active_set.jl")
+include("KKT/Dense/active_set.jl")
+include("KKT/Dense/active_set_condensed.jl")
+include("KKT/Sparse/active_set.jl")
+include("KKT/Sparse/active_set_condensed.jl")
 include("api.jl")
 include("utils/cache.jl")
 include("utils/jac_cache.jl")

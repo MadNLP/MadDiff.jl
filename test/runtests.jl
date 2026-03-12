@@ -166,6 +166,22 @@ const KKT_CONFIGS = [
         dx_tol = 5e-4,
         dy_tol = 5e-3,
     ),  # /!\ reduced tolerances for condensed
+    _kkt_config(
+        name = "DenseActiveSetKKT",
+        maddiff_opts = (; kkt_system = MadDiff.DenseActiveSetKKTSystem, linear_solver = MadNLP.LapackCPUSolver),
+    ),
+    _kkt_config(
+        name = "SparseActiveSetKKT",
+        maddiff_opts = (; kkt_system = MadDiff.SparseActiveSetKKTSystem, linear_solver = MadNLP.LDLSolver),
+    ),
+    _kkt_config(
+        name = "DenseCondensedActiveSetKKT",
+        maddiff_opts = (; kkt_system = MadDiff.DenseCondensedActiveSetKKTSystem, linear_solver = MadNLP.LapackCPUSolver),
+    ),
+    _kkt_config(
+        name = "SparseCondensedActiveSetKKT",
+        maddiff_opts = (; kkt_system = MadDiff.SparseCondensedActiveSetKKTSystem, linear_solver = MadNLP.LDLSolver),
+    ),
     # TODO: test MadIPM.Optimizer, MadNCL.Optimizer
 ]
 

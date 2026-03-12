@@ -4,9 +4,11 @@ version = "0.1.0"
 authors = ["Klamkin, Michael <mklamkin3@gatech.edu>"]
 
 [deps]
+AcceleratedKernels = "6a4ca0a5-0e36-4168-a932-d9be78d558f1"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MadNLP = "2621e9c9-9eb4-46b1-8089-e8c72242dfb6"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [weakdeps]
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
@@ -16,6 +18,7 @@ MadNCL = "434a0bcb-5a7c-42b2-a9d3-9e3f760e7af0"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
+AcceleratedKernels = {path = "../AcceleratedKernels.jl"}
 MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
 NLPModels = {rev = "mk/param_api", url = "https://github.com/klamike/NLPModels.jl"}
 
