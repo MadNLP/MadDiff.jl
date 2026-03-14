@@ -17,6 +17,7 @@ NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
 NLPModelsJuMP = "792afdf1-32c1-5681-94e0-d7bf7a5df49e"
 QuadraticModels = "f468eda6-eac5-11e8-05a5-ff9e497bcd19"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
@@ -24,8 +25,9 @@ DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
 ExaModels = {rev = "mk/param_ad", url = "https://github.com/klamike/ExaModels.jl"}
 HybridKKT = {rev = "master", url = "https://github.com/MadNLP/HybridKKT.jl.git"}
 MadDiff = {path = ".."}
-MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
-NLPModels = {rev = "mk/param_api", url = "https://github.com/klamike/NLPModels.jl"}
+MadIPM = {rev = "mk/batchperf", url = "https://github.com/klamike/MadIPM.jl"}
+NLPModels = {rev = "mk/paramnlp", url = "https://github.com/klamike/NLPModels.jl"}
+QuadraticModels = {rev = "mk/rhsbatch", url = "https://github.com/klamike/QuadraticModels.jl"}
 
 [compat]
 DiffOpt = "0.5.5"
