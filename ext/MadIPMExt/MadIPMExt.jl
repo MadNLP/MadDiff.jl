@@ -91,7 +91,6 @@ end
 
 include("batch_api.jl")
 include("batch_cache.jl")
-include("batch_api_constructor.jl")
 include("batch_packing.jl")
 include("batch_kkt.jl")
 include("batch_jvp.jl")
