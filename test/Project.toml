@@ -25,6 +25,7 @@ DiffOpt = {rev = "master", url = "https://github.com/jump-dev/DiffOpt.jl.git"}
 ExaModels = {rev = "mk/param_ad", url = "https://github.com/klamike/ExaModels.jl"}
 HybridKKT = {rev = "master", url = "https://github.com/MadNLP/HybridKKT.jl.git"}
 MadDiff = {path = ".."}
+MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
 MadIPM = {rev = "mk/batchperf", url = "https://github.com/klamike/MadIPM.jl"}
 NLPModels = {rev = "mk/paramnlp", url = "https://github.com/klamike/NLPModels.jl"}
 QuadraticModels = {rev = "mk/rhsbatch", url = "https://github.com/klamike/QuadraticModels.jl"}
