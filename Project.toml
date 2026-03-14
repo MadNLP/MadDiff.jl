@@ -17,7 +17,7 @@ MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
 MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
-NLPModels = {rev = "mk/param_api", url = "https://github.com/klamike/NLPModels.jl"}
+NLPModels = {rev = "mk/paramnlp", url = "https://github.com/klamike/NLPModels.jl"}
 
 [extensions]
 DiffOptExt = ["DiffOpt", "MathOptInterface"]
