@@ -177,3 +177,25 @@ has_uvar_param(::Union{BatchJVPCache, BatchVJPCache}, meta) = meta.nnzjpuvar != 
 has_lcon_param(::Union{BatchJVPCache, BatchVJPCache}, meta) = meta.nnzjplcon != 0
 has_ucon_param(::Union{BatchJVPCache, BatchVJPCache}, meta) = meta.nnzjpucon != 0
 has_grad_param(::Union{BatchJVPCache, BatchVJPCache}, meta) = meta.nnzgp != 0
+
+function BatchMadDiffSolver(batch_solver::AbstractBatchMPCSolver{T}) where {T}
+    bcb = batch_solver.bcb
+    m = bcb.ncon
+    is_eq = Vector{Bool}(undef, m)
+    fill!(is_eq, false)
+    is_eq[bcb.ind_eq] .= true
+
+    n_p = batch_solver.nlp.meta.nparam
+    bs = batch_solver.batch_size
+    MT = typeof(batch_solver.workspace.bx)
+
+    FC = BatchJVPCache{MT, BatchPrimalVector{T, MT, typeof(bcb.ind_lb)}}
+    RC = BatchVJPCache{MT, BatchPrimalVector{T, MT, typeof(bcb.ind_lb)}}
+
+    # FIXME: BatchMadDiffConfig
+    refactorize_kkt!(batch_solver.kkt, batch_solver)
+
+    return BatchMadDiffSolver{T, typeof(batch_solver), FC, RC}(
+        batch_solver, n_p, is_eq, nothing, nothing,
+    )
+end
