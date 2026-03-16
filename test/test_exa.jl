@@ -21,7 +21,7 @@ using NLPModels, LinearAlgebra, ExaModels, KernelAbstractions
         return solver
     end
 
-    backends = [
+    backends = Tuple{String, Any, NamedTuple}[
         ("nothing", nothing, (;)),
         ("CPU",     CPU(),   (;)),
     ]
