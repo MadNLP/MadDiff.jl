@@ -274,6 +274,8 @@ end
 end
 end
 
+include("test_batch_diff.jl")
+
 @testset "MOI attributes" begin
     model = MadDiff.diff_model(MadNLP.Optimizer)
     set_silent(model)

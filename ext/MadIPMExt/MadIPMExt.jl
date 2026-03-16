@@ -2,12 +2,23 @@ module MadIPMExt
 
 using LinearAlgebra: mul!
 import MadDiff
+import MadNLP
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve_linear_system!
-import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
+import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!,
+               AbstractBatchMPCSolver, UniformBatchMPCSolver, UniformBatchCallback,
+               BatchUnreducedKKTVector, BatchPrimalVector, BatchVector,
+               SparseUniformBatchKKTSystem, xp_lr, xp_ur,
+               lower, upper
+import MadIPM
 import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim,
                 _solve_with_refine!, _adjoint_solve_with_refine!,
                 adjoint_solve_kkt!, adjoint_mul!,
-                _adjoint_kktmul!, _adjoint_finish_bounds!, _adjoint_reduce_rhs!
+                _adjoint_kktmul!, _adjoint_finish_bounds!, _adjoint_reduce_rhs!,
+                has_hess_param, has_jac_param, has_lvar_param, has_uvar_param,
+                has_lcon_param, has_ucon_param, has_grad_param
+import NLPModels: hpprod!, jpprod!, lvar_jpprod!, uvar_jpprod!, lcon_jpprod!, ucon_jpprod!,
+                  grad!, grad_param!, hptprod!, jptprod!,
+                  lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
 
 function _adjoint_normal_solve!(kkt::NormalKKTSystem{T}, w::AbstractKKTVector) where {T}
     r1 = kkt.buffer_n
@@ -60,22 +71,29 @@ function refactorize_kkt!(kkt, solver::MPCSolver)
     return nothing
 end
 
-# function _solve_with_refine!(
-#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-#     w::AbstractKKTVector,
-#     cache,
-# ) where {T, KKT, VI, VB, FC, RC, F}
-#     solve!(sens.kkt, w)
-#     return nothing
-# end
+function _solve_with_refine!(
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    w::MadNLP.AbstractKKTVector,
+    cache,
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+    MadNLP.solve_kkt!(sens.kkt, w)
+    return nothing
+end
 
-# function _adjoint_solve_with_refine!(
-#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-#     w::AbstractKKTVector,
-#     cache,
-# ) where {T, KKT, VI, VB, FC, RC, F}
-#     adjoint_solve_kkt!(sens.kkt, w)
-#     return nothing
-# end
+function _adjoint_solve_with_refine!(
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    w::MadNLP.AbstractKKTVector,
+    cache,
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+    adjoint_solve_kkt!(sens.kkt, w)
+    return nothing
+end
+
+include("batch_api.jl")
+include("batch_cache.jl")
+include("batch_packing.jl")
+include("batch_kkt.jl")
+include("batch_jvp.jl")
+include("batch_vjp.jl")
 
 end # module
