@@ -34,7 +34,7 @@ using NLPModels, LinearAlgebra, ExaModels, KernelAbstractions
     end
 
     _to_device(v, ::Nothing) = v
-    _to_device(v, backend) = KernelAbstractions.copyto!(KernelAbstractions.allocate(backend, eltype(v), size(v)...), v)
+    _to_device(v, backend) = copyto!(KernelAbstractions.allocate(backend, eltype(v), size(v)...), v)
 
     for (backend_name, backend, madnlp_opts) in backends
         @testset "backend=$backend_name" begin
