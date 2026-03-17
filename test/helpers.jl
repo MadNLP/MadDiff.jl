@@ -212,7 +212,7 @@ end
 function run_maddiff_consistency(build_model; madnlp_opts = (;), maddiff_opts = (;), atol = 1e-8, rtol = 0.0)
     model = _maddiff_model(MadNLP.Optimizer, madnlp_opts, maddiff_opts)
     set_silent(model)
-    if optimizer === MadNLP.Optimizer && get(madnlp_opts, :linear_solver, nothing) === CUDSSSolver
+    if get(madnlp_opts, :linear_solver, nothing) === CUDSSSolver
         set_optimizer_attribute(model, "array_type", CuArray)
     end
     build_model(model)
