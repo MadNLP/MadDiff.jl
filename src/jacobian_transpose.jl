@@ -72,11 +72,10 @@ function pack_jacobian_transpose!(sens::MadDiffSolver{T}, tcache) where {T}
 end
 
 function solve_jacobian_transpose!(sens::MadDiffSolver, tcache)
-    adjoint_multi_solve_kkt!(sens.kkt, tcache.W)
-    return nothing
+    return adjoint_multi_solve_kkt!(sens.kkt, tcache.W)
 end
 
-function unpack_jacobian_transpose!(sens::MadDiffSolver, tcache)
+function unpack_jacobian_transpose!(sens::MadDiffSolver, tcache, W)
     cb = sens.solver.cb
     n_primal = length(sens.kkt.pr_diag)
     n_dual = length(sens.kkt.du_diag)
@@ -88,14 +87,14 @@ function unpack_jacobian_transpose!(sens::MadDiffSolver, tcache)
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + n_ub
 
-    unpack_dx!(tcache.dx_solved, cb, view(tcache.W, primal_rows, :))
-    unpack_y!(tcache.dy_solved, cb, view(tcache.W, dual_rows, :))
-    unpack_dzl!(tcache.dzl_solved, cb, view(tcache.W, lb_rows, :), tcache.dz_work)
-    unpack_dzu!(tcache.dzu_solved, cb, view(tcache.W, ub_rows, :), tcache.dz_work)
+    unpack_dx!(tcache.dx_solved, cb, view(W, primal_rows, :))
+    unpack_y!(tcache.dy_solved, cb, view(W, dual_rows, :))
+    unpack_dzl!(tcache.dzl_solved, cb, view(W, lb_rows, :), tcache.dz_work)
+    unpack_dzu!(tcache.dzu_solved, cb, view(W, ub_rows, :), tcache.dz_work)
     return nothing
 end
 
-function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::MadDiffSolver{T}, tcache) where {T}
+function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::MadDiffSolver{T}, tcache, W) where {T}
     solver = sens.solver
     nlp = solver.nlp
     meta = nlp.meta
@@ -141,7 +140,7 @@ function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::Mad
     lb_rows = n_primal + n_dual + 1:n_primal + n_dual + n_lb
     ub_rows = n_primal + n_dual + n_lb + 1:n_primal + n_dual + n_lb + length(sens.kkt.u_diag)
 
-    _jacobian_transpose_fill_pv!(sens.kkt, tcache.pv_lr, tcache.pv_ur, cb, view(tcache.W, lb_rows, :), view(tcache.W, ub_rows, :))
+    _jacobian_transpose_fill_pv!(sens.kkt, tcache.pv_lr, tcache.pv_ur, cb, view(W, lb_rows, :), view(W, ub_rows, :))
 
     if has_lvar_param(tcache, meta)
         unpack_dx!(tcache.x_lr, cb, view(tcache.pv_lr, 1:cb.nvar, :))
@@ -154,12 +153,12 @@ function pullback_jacobian_transpose!(result::JacobianTransposeResult, sens::Mad
     end
 
     if has_lcon_param(tcache, meta)
-        unpack_slack!(tcache.y_lr, cb, tcache.pv_lr, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
+        unpack_slack!(tcache.y_lr, cb, tcache.pv_lr, sens.is_eq, view(W, n_primal + 1:n_primal + n_dual, :))
         _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.lcon, tcache.y_lr, -one(T))
     end
 
     if has_ucon_param(tcache, meta)
-        unpack_slack!(tcache.y_ur, cb, tcache.pv_ur, sens.is_eq, view(tcache.W, n_primal + 1:n_primal + n_dual, :))
+        unpack_slack!(tcache.y_ur, cb, tcache.pv_ur, sens.is_eq, view(W, n_primal + 1:n_primal + n_dual, :))
         _transpose_mm!(tcache.grad_all, tcache.tmp_mul, tcache.ucon, tcache.y_ur, one(T))
     end
 
@@ -179,8 +178,8 @@ function jacobian_transpose!(result::JacobianTransposeResult, sens::MadDiffSolve
     unpack_x!(tcache.x_nlp, cb, variable(sens.solver.x))
 
     pack_jacobian_transpose!(sens, tcache)
-    solve_jacobian_transpose!(sens, tcache)
-    unpack_jacobian_transpose!(sens, tcache)
-    pullback_jacobian_transpose!(result, sens, tcache)
+    W = solve_jacobian_transpose!(sens, tcache)
+    unpack_jacobian_transpose!(sens, tcache, W)
+    pullback_jacobian_transpose!(result, sens, tcache, W)
     return result
 end

@@ -56,13 +56,11 @@ function pack_jacobian!(sens::MadDiffSolver{T}, jcache) where {T}
 end
 
 function solve_jacobian!(sens::MadDiffSolver{T}, jcache) where {T}
-    multi_solve_kkt!(sens.kkt, jcache.W)
-    return nothing
+    return multi_solve_kkt!(sens.kkt, jcache.W)
 end
 
-function unpack_jacobian!(result::JacobianResult, sens::MadDiffSolver, jcache)
+function unpack_jacobian!(result::JacobianResult, sens::MadDiffSolver, jcache, W)
     cb = sens.solver.cb
-    W = jcache.W
 
     primal_rows, dual_rows, lb_rows, ub_rows = _jacobian_row_ranges(sens.kkt)
 
@@ -118,8 +116,8 @@ function jacobian!(result::JacobianResult, sens::MadDiffSolver{T}) where {T}
     (has_ucon_eq_param(jcache, meta) || has_ucon_slack_param(jcache, meta)) && ucon_jac_param_coord!(nlp, jcache.ucon_raw.V)
 
     pack_jacobian!(sens, jcache)
-    solve_jacobian!(sens, jcache)
-    unpack_jacobian!(result, sens, jcache)
+    W = solve_jacobian!(sens, jcache)
+    unpack_jacobian!(result, sens, jcache, W)
     compute_jacobian_objective_sensitivity!(result, sens, jcache)
 
     return result

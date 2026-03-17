@@ -111,14 +111,17 @@ function _adjoint_solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVecto
 end
 
 function multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractMatrix)
-    # TODO: sparse input dense output
     rhs = UnreducedKKTVector(kkt)
-    n = length(full(rhs))
-
     for j in axes(W, 2)
-        copyto!(full(rhs), 1, W, (j - 1) * n + 1, n)
-        solve_kkt!(kkt, rhs)  # NOTE: no IR in multi_solve
-        copyto!(W, (j - 1) * n + 1, full(rhs), 1, n)
+        copyto!(full(rhs), view(W, :, j))
+        solve_kkt!(kkt, rhs)
+        copyto!(view(W, :, j), full(rhs))
     end
     return W
+end
+
+function multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractSparseMatrix)
+    Wd = collect(W)
+    multi_solve_kkt!(kkt, Wd)
+    return Wd
 end
