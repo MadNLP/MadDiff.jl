@@ -2,6 +2,7 @@ module MadIPMExt
 
 using LinearAlgebra: mul!
 import MadDiff
+import MadNLP
 import MadNLP: AbstractKKTVector, primal, dual, dual_lb, dual_ub, solve_linear_system!
 import MadIPM: NormalKKTSystem, MPCSolver, factorize_regularized_system!
 import MadDiff: MadDiffSolver, refactorize_kkt!, _SensitivitySolverShim,
@@ -60,22 +61,22 @@ function refactorize_kkt!(kkt, solver::MPCSolver)
     return nothing
 end
 
-# function _solve_with_refine!(
-#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-#     w::AbstractKKTVector,
-#     cache,
-# ) where {T, KKT, VI, VB, FC, RC, F}
-#     solve!(sens.kkt, w)
-#     return nothing
-# end
+function _solve_with_refine!(
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    w::MadNLP.AbstractKKTVector,
+    cache,
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+    MadNLP.solve_kkt!(sens.kkt, w)
+    return nothing
+end
 
-# function _adjoint_solve_with_refine!(
-#     sens::MadDiffSolver{T, KKT, MPCSolver, VI, VB, FC, RC, F},
-#     w::AbstractKKTVector,
-#     cache,
-# ) where {T, KKT, VI, VB, FC, RC, F}
-#     adjoint_solve_kkt!(sens.kkt, w)
-#     return nothing
-# end
+function _adjoint_solve_with_refine!(
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    w::MadNLP.AbstractKKTVector,
+    cache,
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+    adjoint_solve_kkt!(sens.kkt, w)
+    return nothing
+end
 
 end # module
