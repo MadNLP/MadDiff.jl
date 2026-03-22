@@ -1,24 +1,6 @@
 function adjoint_solve_kkt! end
 
-function adjoint_multi_solve_kkt! end
-
 function adjoint_mul! end
-
-function adjoint_multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractMatrix)
-    rhs = UnreducedKKTVector(kkt)
-    for j in axes(W, 2)
-        copyto!(full(rhs), view(W, :, j))
-        adjoint_solve_kkt!(kkt, rhs)
-        copyto!(view(W, :, j), full(rhs))
-    end
-    return W
-end
-
-function adjoint_multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractSparseMatrix)
-    Wd = collect(W)
-    adjoint_multi_solve_kkt!(kkt, Wd)
-    return Wd
-end
 
 function _adjoint_kktmul!(
     w::AbstractKKTVector,

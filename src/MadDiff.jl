@@ -7,32 +7,25 @@ import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
     full, primal, variable, slack, dual, dual_lb, dual_ub, primal_dual, num_variables,
     SOLVE_SUCCEEDED, SOLVED_TO_ACCEPTABLE_LEVEL,
     create_kkt_system, initialize!,
-    AbstractKKTSystem, AbstractCondensedKKTSystem, AbstractDenseKKTSystem, AbstractUnreducedKKTSystem,
+    AbstractKKTSystem, AbstractDenseKKTSystem, AbstractUnreducedKKTSystem,
     SparseUnreducedKKTSystem, CompactLBFGS,
     SparseCondensedKKTSystem, DenseCondensedKKTSystem,
     ScaledSparseKKTSystem, SparseKKTSystem, DenseKKTSystem, 
     AbstractKKTVector, UnreducedKKTVector, PrimalVector,
-    SparseMatrixCOO, coo_to_csc, transfer!,
     unpack_x!, unpack_y!, unpack_z!,
     eval_jac_wrapper!, eval_lag_hess_wrapper!,
     AbstractCallback, SparseCallback, MakeParameter, create_array,
-    @debug, @sprintf, _symv!, _eval_grad_f_wrapper!, _get_sparse_csc
+    @debug, @sprintf, _symv!, _eval_grad_f_wrapper!
 
 import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
-import NLPModels: hpprod!, jpprod!,
-                            lvar_jpprod!, uvar_jpprod!, lcon_jpprod!, ucon_jpprod!,
-                            grad_param!, hess_param_structure, hess_param_coord!, jac_param_structure, jac_param_coord!,
-                            lvar_jac_param_structure, lvar_jac_param_coord!,
-                            uvar_jac_param_structure, uvar_jac_param_coord!,
-                            lcon_jac_param_structure, lcon_jac_param_coord!,
-                            ucon_jac_param_structure, ucon_jac_param_coord!,
-                            hptprod!, jptprod!,
-                            lvar_jptprod!, uvar_jptprod!, lcon_jptprod!, ucon_jptprod!
-import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric, diagind
-import SparseArrays: AbstractSparseMatrix
+import ParametricNLPModels:
+    get_nparam, get_nnzgp, get_nnzjp, get_nnzhp, get_nnzjplcon, get_nnzjpucon, get_nnzjplvar, get_nnzjpuvar,
+    grad_param!, hpprod!, hptprod!, jpprod!, jptprod!,
+    lvar_jpprod!, lvar_jptprod!, uvar_jpprod!, uvar_jptprod!,
+    lcon_jpprod!, lcon_jptprod!, ucon_jpprod!, ucon_jptprod!
+import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
 
 include("utils/packing.jl")
-include("utils/batch_packing.jl")
 include("KKT/adjoint.jl")
 include("KKT/Sparse/augmented.jl")
 include("KKT/Sparse/scaled_augmented.jl")
@@ -42,17 +35,14 @@ include("KKT/Dense/augmented.jl")
 include("KKT/Dense/condensed.jl")
 include("api.jl")
 include("utils/cache.jl")
-include("utils/jac_cache.jl")
 include("utils/utils.jl")
 include("KKT/kkt.jl")
 include("jvp.jl")
-include("jacobian.jl")
 include("vjp.jl")
-include("jacobian_transpose.jl")
 
 export MadDiffSolver, MadDiffConfig
 export jacobian_vector_product!, vector_jacobian_product!
-export jacobian!, jacobian_transpose!
+export compute_objective_sensitivity!
 export reset_sensitivity_cache!
 
 """

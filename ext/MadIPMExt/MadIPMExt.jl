@@ -62,19 +62,19 @@ function refactorize_kkt!(kkt, solver::MPCSolver)
 end
 
 function _solve_with_refine!(
-    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC},
     w::MadNLP.AbstractKKTVector,
     cache,
-) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC}
     MadNLP.solve_kkt!(sens.kkt, w)
     return nothing
 end
 
 function _adjoint_solve_with_refine!(
-    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC},
+    sens::MadDiffSolver{T, KKT, Solver, VB, FC, RC},
     w::MadNLP.AbstractKKTVector,
     cache,
-) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC, JC, TC}
+) where {T, KKT<:MadNLP.AbstractKKTSystem{T}, Solver<:MPCSolver{T}, VB, FC, RC}
     adjoint_solve_kkt!(sens.kkt, w)
     return nothing
 end

@@ -25,7 +25,6 @@ ExaModels = {rev = "mk/param_ad", url = "https://github.com/klamike/ExaModels.jl
 HybridKKT = {rev = "master", url = "https://github.com/MadNLP/HybridKKT.jl.git"}
 MadDiff = {path = ".."}
 MadNLP = {rev = "mk/moi_param", url = "https://github.com/klamike/MadNLP.jl.git"}
-NLPModels = {rev = "mk/param_api", url = "https://github.com/klamike/NLPModels.jl"}
 
 [compat]
 DiffOpt = "0.5.5"

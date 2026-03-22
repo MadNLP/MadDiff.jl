@@ -34,12 +34,14 @@ function _forward_differentiate_impl!(wrapper::DiffOptWrapper{OT, T}) where {OT,
     VT = typeof(solver.y)
     if VT <: Vector
         result = MadDiff.jacobian_vector_product!(sens, Δp)
+        Δp_store = Δp
         dx_cpu = result.dx
         dy_cpu = result.dy
     else
         # TODO: pre-allocate
         Δp_gpu = VT(Δp)
         result = MadDiff.jacobian_vector_product!(sens, Δp_gpu)
+        Δp_store = Δp_gpu
         dx_cpu = Array(result.dx)
         dy_cpu = Array(result.dy)
     end
@@ -56,7 +58,9 @@ function _forward_differentiate_impl!(wrapper::DiffOptWrapper{OT, T}) where {OT,
 
     _store_dual_sensitivities!(wrapper.forward.dual_sensitivities, inner, dy)
     _store_bound_dual_sensitivities!(wrapper, sens, result, inner)
-    wrapper.forward.objective_sensitivity = result.dobj[]
+    wrapper.forward.objective_sensitivity = nothing
+    wrapper.forward.jvp_result = result
+    wrapper.forward.param_direction = Δp_store
     return
 end
 
@@ -127,6 +131,18 @@ function MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ForwardConstraintDual, ci::M
     return wrapper.forward.dual_sensitivities[ci]
 end
 
-function MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ForwardObjectiveSensitivity)
+function MOI.get(wrapper::DiffOptWrapper{OT, T}, ::MadDiff.ForwardObjectiveSensitivity) where {OT, T}
+    if isnothing(wrapper.forward.objective_sensitivity)
+        if isnothing(wrapper.forward.jvp_result)
+            return zero(T)
+        end
+        sens = _get_sensitivity_solver!(wrapper)
+        MadDiff.compute_objective_sensitivity!(
+            wrapper.forward.jvp_result,
+            sens,
+            wrapper.forward.param_direction,
+        )
+        wrapper.forward.objective_sensitivity = wrapper.forward.jvp_result.dobj[]
+    end
     return wrapper.forward.objective_sensitivity
 end

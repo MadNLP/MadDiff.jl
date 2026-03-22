@@ -109,19 +109,3 @@ function _adjoint_solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVecto
     copyto!(full(w), full(d))
     return nothing
 end
-
-function multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractMatrix)
-    rhs = UnreducedKKTVector(kkt)
-    for j in axes(W, 2)
-        copyto!(full(rhs), view(W, :, j))
-        solve_kkt!(kkt, rhs)
-        copyto!(view(W, :, j), full(rhs))
-    end
-    return W
-end
-
-function multi_solve_kkt!(kkt::AbstractKKTSystem, W::AbstractSparseMatrix)
-    Wd = collect(W)
-    multi_solve_kkt!(kkt, Wd)
-    return Wd
-end

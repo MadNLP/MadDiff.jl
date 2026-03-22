@@ -4,7 +4,6 @@ function jacobian_vector_product!(
     solver = sens.solver
     cb = solver.cb
     nlp = solver.nlp
-    meta = nlp.meta
     cache = get_jvp_cache!(sens)
 
     unpack_x!(cache.x_nlp, cb, variable(solver.x))
@@ -20,36 +19,40 @@ function jacobian_vector_product!(
     fill!(cache.dlcon_nlp, zero(T))
     fill!(cache.ducon_nlp, zero(T))
 
-    has_hess_param(cache, meta) && hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
-    has_jac_param(cache, meta)  && jpprod!(nlp, x, Δp, cache.jpv_nlp)
-    has_lvar_param(cache, meta) && lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
-    has_uvar_param(cache, meta) && uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
-    has_lcon_param(cache, meta) && lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
-    has_ucon_param(cache, meta) && ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
+    has_hess_param(nlp) && hpprod!(nlp, x, y, Δp, cache.hpv_nlp; obj_weight = cb.obj_sign)
+    has_jac_param(nlp)  && jpprod!(nlp, x, Δp, cache.jpv_nlp)
+    has_lvar_param(nlp) && lvar_jpprod!(nlp, Δp, cache.dlvar_nlp)
+    has_uvar_param(nlp) && uvar_jpprod!(nlp, Δp, cache.duvar_nlp)
+    has_lcon_param(nlp) && lcon_jpprod!(nlp, Δp, cache.dlcon_nlp)
+    has_ucon_param(nlp) && ucon_jpprod!(nlp, Δp, cache.ducon_nlp)
 
     pack_jvp!(sens, cache)
     solve_jvp!(sens)
     unpack_jvp!(result, sens, cache)
-
-    compute_objective_sensitivity!(result, sens, cache, Δp)
+    result.dobj[] = zero(T)
 
     return result
 end
 
 function compute_objective_sensitivity!(
+    result::JVPResult, sens::MadDiffSolver{T}, Δp::AbstractVector,
+) where {T}
+    cache = get_jvp_cache!(sens)
+    return _compute_objective_sensitivity!(result, sens, cache, Δp)
+end
+
+function _compute_objective_sensitivity!(
     result::JVPResult, sens::MadDiffSolver{T}, cache, Δp::AbstractVector,
 ) where {T}
     solver = sens.solver
     nlp = solver.nlp
-    meta = nlp.meta
     x = cache.x_nlp
 
+    fill!(cache.grad_x, zero(T))
+    fill!(cache.grad_p, zero(T))
+
     grad!(nlp, x, cache.grad_x)
-    if has_grad_param(cache, meta)
-        grad_param!(nlp, x, cache.grad_p)
-    else
-        fill!(cache.grad_p, zero(T))
-    end
+    has_grad_param(nlp) && grad_param!(nlp, x, cache.grad_p)
 
     result.dobj[] = dot(cache.grad_x, result.dx) + dot(cache.grad_p, Δp)
 

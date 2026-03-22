@@ -30,7 +30,7 @@ mutable struct MadDiffSolver{
     T,
     KKT <: AbstractKKTSystem{T},
     Solver <: AbstractMadNLPSolver{T},
-    VB, FC, RC, JC, TC
+    VB, FC, RC
 }
     solver::Solver
     config::MadDiffConfig
@@ -39,14 +39,12 @@ mutable struct MadDiffSolver{
     is_eq::VB
     jvp_cache::Union{Nothing, FC}
     vjp_cache::Union{Nothing, RC}
-    jac_cache::Union{Nothing, JC}
-    jact_cache::Union{Nothing, TC}
 end
 
 function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = MadDiffConfig()) where {T}
     assert_solved_and_feasible(solver)
 
-    n_p = solver.nlp.meta.nparam
+    n_p = get_nparam(solver.nlp)
 
     cb = solver.cb
 
@@ -66,16 +64,9 @@ function MadDiffSolver(solver::AbstractMadNLPSolver{T}; config::MadDiffConfig = 
     PV = PrimalVector{T,VT,VI}
     FC = JVPCache{VT, VK, PV}
     RC = VJPCache{VT, VK, PV}
-    MT = typeof(zeros_like(cb, T, 0, 0))
-    _vi_int = create_array(cb, Int, 0)
-    _dummy_coo = SparseMatrixCOO(0, 0, _vi_int, _vi_int, similar(x_array, 0))
-    WM_jac = typeof(first(coo_to_csc(_dummy_coo)))
-    WM_jact = typeof(spzeros_like(cb, T, 0, 0))
-    JC = JacobianCache{VT, MT, WM_jac, VI}
-    TC = JacobianTransposeCache{VT, MT, WM_jact}
-    return MadDiffSolver{T, KKT, Solver, VB, FC, RC, JC, TC}(
+    return MadDiffSolver{T, KKT, Solver, VB, FC, RC}(
         solver, config, kkt, n_p, is_eq,
-        nothing, nothing, nothing, nothing,
+        nothing, nothing,
     )
 end
 
@@ -87,8 +78,6 @@ Clear the differentiation caches. Must be called upon changes to the underlying 
 function reset_sensitivity_cache!(sens::MadDiffSolver)
     sens.jvp_cache = nothing
     sens.vjp_cache = nothing
-    sens.jac_cache = nothing
-    sens.jact_cache = nothing
     sens.kkt = get_sensitivity_kkt(sens.solver, sens.config)
     return sens
 end
@@ -101,10 +90,18 @@ Compute sensitivities of the optimal solution to a parameter perturbation
 via forward implicit differentiation.
 
 Returns a [`JVPResult`](@ref) with solution sensitivities `dx`, `dy`, `dzl`, `dzu`.
+Use [`compute_objective_sensitivity!`](@ref) to populate `result.dobj`.
 """
 function jacobian_vector_product!(sens::MadDiffSolver, Δp::AbstractVector)
     return jacobian_vector_product!(JVPResult(sens), sens, Δp)
 end
+
+"""
+    compute_objective_sensitivity!(result::JVPResult, sens::MadDiffSolver, Δp::AbstractVector)
+
+Populate `result.dobj` for a previously computed JVP result.
+"""
+function compute_objective_sensitivity! end
 
 """
     vector_jacobian_product!(sens::MadDiffSolver; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
@@ -124,28 +121,4 @@ function vector_jacobian_product!(
     dL_dx = nothing, dL_dy = nothing, dL_dzl = nothing, dL_dzu = nothing, dobj = nothing,
 )
     return vector_jacobian_product!(VJPResult(sens), sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
-end
-
-"""
-    jacobian!(sens::MadDiffSolver)
-
-Compute the Jacobian of the optimal solution with respect to the parameters
-using forward implicit differentiation.
-
-Returns a [`JacobianResult`](@ref) containing Jacobian blocks.
-"""
-function jacobian!(sens::MadDiffSolver)
-    jacobian!(JacobianResult(sens), sens)
-end
-
-"""
-    jacobian_transpose!(sens::MadDiffSolver)
-
-Compute the transpose of the Jacobian of the optimal solution with respect to
-parameters using reverse implicit differentiation.
-
-Returns a [`JacobianTransposeResult`](@ref) containing Jacobian transpose blocks.
-"""
-function jacobian_transpose!(sens::MadDiffSolver)
-    jacobian_transpose!(JacobianTransposeResult(sens), sens)
 end

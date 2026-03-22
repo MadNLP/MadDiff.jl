@@ -7,21 +7,10 @@ MadDiff.MadDiffConfig
 MadDiff.reset_sensitivity_cache!
 ```
 
-## Jacobian
-```@docs
-MadDiff.jacobian!
-MadDiff.JacobianResult
-```
-
-## Jacobian Transpose
-```@docs
-MadDiff.jacobian_transpose!
-MadDiff.JacobianTransposeResult
-```
-
 ## Jacobian-Vector Product
 ```@docs
 MadDiff.jacobian_vector_product!
+MadDiff.compute_objective_sensitivity!
 MadDiff.JVPResult
 ```
 

@@ -175,19 +175,12 @@ end
 _solver_from_model(model) = _unwrap_optimizer(unsafe_backend(model).optimizer).solver
 
 function _check_consistency(sens; atol = 1e-8, rtol = 0.0)
-    jf = MadDiff.jacobian!(sens)
-    jr = MadDiff.jacobian_transpose!(sens)
-    @test isapprox(jr.dx, transpose(jf.dx); atol, rtol)
-    @test isapprox(jr.dy, transpose(jf.dy); atol, rtol)
-    @test isapprox(jr.dzl, transpose(jf.dzl); atol, rtol)
-    @test isapprox(jr.dzu, transpose(jf.dzu); atol, rtol)
-    @test isapprox(jr.dobj, jf.dobj; atol, rtol)
-
     n_x   = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(sens.solver.nlp)
     for j in 1:sens.n_p
         dp = zeros(Float64, sens.n_p); dp[j] = 1.0
         col = MadDiff.jacobian_vector_product!(sens, dp)
+        MadDiff.compute_objective_sensitivity!(col, sens, dp)
 
         for i in 1:n_x
             dL_dx = zeros(Float64, n_x); dL_dx[i] = 1.0

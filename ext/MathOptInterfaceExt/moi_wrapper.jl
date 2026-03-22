@@ -11,7 +11,9 @@ end
 function _clear_outputs!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
     empty!(wrapper.forward.primal_sensitivities)
     empty!(wrapper.forward.dual_sensitivities)
-    wrapper.forward.objective_sensitivity = zero(T)
+    wrapper.forward.objective_sensitivity = nothing
+    wrapper.forward.jvp_result = nothing
+    wrapper.forward.param_direction = nothing
     empty!(wrapper.reverse.param_outputs)
     return wrapper.diff_time = zero(T)
 end

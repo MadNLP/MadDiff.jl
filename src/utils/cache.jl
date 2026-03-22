@@ -70,7 +70,8 @@ Fields store directional sensitivities for a parameter perturbation `Δp`:
 - `dy`: direction for constraint multipliers `y`
 - `dzl`: direction for lower-bound multipliers
 - `dzu`: direction for upper-bound multipliers
-- `dobj`: directional derivative of the objective value along `Δp`
+- `dobj`: directional derivative of the objective value along `Δp`, populated by
+  [`compute_objective_sensitivity!`](@ref)
 
 Returned by [`jacobian_vector_product!`](@ref).
 """

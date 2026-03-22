@@ -31,3 +31,11 @@ function _needs_new_kkt(config)
         !isnothing(config.linear_solver) ||
         !isnothing(config.linear_solver_options)
 end
+
+has_hess_param(nlp) = get_nnzhp(nlp) != 0
+has_jac_param(nlp) = get_nnzjp(nlp) != 0
+has_lvar_param(nlp) = get_nnzjplvar(nlp) != 0
+has_uvar_param(nlp) = get_nnzjpuvar(nlp) != 0
+has_lcon_param(nlp) = get_nnzjplcon(nlp) != 0
+has_ucon_param(nlp) = get_nnzjpucon(nlp) != 0
+has_grad_param(nlp) = get_nnzgp(nlp) != 0

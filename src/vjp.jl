@@ -96,7 +96,6 @@ end
 function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing) where {T}
     solver = sens.solver
     nlp = solver.nlp
-    meta = nlp.meta
     cb = solver.cb
     cache = get_vjp_cache!(sens)
     w = cache.kkt_rhs
@@ -115,18 +114,18 @@ function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing
     fill!(grad_p, zero(T))
 
     unpack_x!(x, cb, variable(solver.x))
-    if has_hess_param(cache, meta)
+    if has_hess_param(nlp)
         unpack_y!(y, cb, solver.y)
         y .*= σ_scaled
         hptprod!(nlp, x, y, dx, grad_p; obj_weight = σ_scaled)
     end
 
-    if !isnothing(dobj) && has_grad_param(cache, meta)
+    if !isnothing(dobj) && has_grad_param(nlp)
         grad_param!(nlp, x, tmp)
         axpy!(-dobj, tmp, grad_p)
     end
     
-    if has_jac_param(cache, meta)
+    if has_jac_param(nlp)
         dy .= result.dy .* σ_scaled
         jptprod!(nlp, x, dy, tmp)
         grad_p .+= tmp
@@ -134,25 +133,25 @@ function vjp_pullback!(result::VJPResult, sens::MadDiffSolver{T}; dobj = nothing
 
     vjp_fill_pv!(sens.kkt, pvl, pvu, w)
 
-    if has_lvar_param(cache, meta)
+    if has_lvar_param(nlp)
         unpack_dx!(x, cb, variable(pvl))
         lvar_jptprod!(nlp, x, tmp)
         grad_p .-= tmp
     end
 
-    if has_uvar_param(cache, meta)
+    if has_uvar_param(nlp)
         unpack_dx!(x, cb, variable(pvu))
         uvar_jptprod!(nlp, x, tmp)
         grad_p .+= tmp
     end
 
-    if has_lcon_param(cache, meta)
+    if has_lcon_param(nlp)
         unpack_slack!(y, cb, pvl, sens.is_eq, dual(w))
         lcon_jptprod!(nlp, y, tmp)
         grad_p .-= tmp
     end
 
-    if has_ucon_param(cache, meta)
+    if has_ucon_param(nlp)
         unpack_slack!(y, cb, pvu, sens.is_eq, dual(w))
         ucon_jptprod!(nlp, y, tmp)
         grad_p .+= tmp

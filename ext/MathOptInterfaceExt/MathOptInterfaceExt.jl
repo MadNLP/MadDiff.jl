@@ -8,13 +8,17 @@ mutable struct ForwardModeData{T}
     param_perturbations::Dict{MOI.ConstraintIndex, T}
     primal_sensitivities::Dict{MOI.VariableIndex, T}
     dual_sensitivities::Dict{MOI.ConstraintIndex, T}
-    objective_sensitivity::T
+    objective_sensitivity::Union{Nothing, T}
+    jvp_result
+    param_direction
 end
 ForwardModeData{T}() where {T} = ForwardModeData{T}(
     Dict{MOI.ConstraintIndex, T}(),
     Dict{MOI.VariableIndex, T}(),
     Dict{MOI.ConstraintIndex, T}(),
-    zero(T),
+    nothing,
+    nothing,
+    nothing,
 )
 
 mutable struct ReverseModeData{T}
