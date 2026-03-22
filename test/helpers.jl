@@ -249,10 +249,6 @@ end
 function _build_kkt(KKTSystem, Callback)
     nlp = if KKTSystem == MadIPM.NormalKKTSystem
         _simple_lp()
-    elseif KKTSystem == MadNCL.K1sAuglagKKTSystem
-        MadNCL.NCLModel(MadNLPTests.HS15Model())
-    elseif KKTSystem == MadNCL.K2rAuglagKKTSystem
-        MadNCL.NCLModel(MadNLPTests.HS15Model())
     else
         MadNLPTests.HS15Model()
     end

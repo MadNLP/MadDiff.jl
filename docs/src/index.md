@@ -4,7 +4,7 @@
 [![Build Status](https://github.com/MadNLP/MadDiff.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MadNLP/MadDiff.jl/actions/workflows/ci.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/MadNLP/MadDiff.jl/branch/main/graph/badge.svg?token=ERB8DC2NZE)](https://codecov.io/gh/MadNLP/MadDiff.jl)
 
-MadDiff implements forward and reverse mode implicit differentiation for MadSuite solvers. MadDiff leverages MadNLP's modular KKT and linear solver infrastructure, supporting LP, QP, and NLP using KKT systems from [MadNLP](https://github.com/MadNLP/MadNLP.jl), [MadIPM](https://github.com/MadNLP/MadIPM.jl), [MadNCL](https://github.com/MadNLP/MadNCL.jl), and [HybridKKT](https://github.com/MadNLP/HybridKKT.jl).
+MadDiff implements forward and reverse mode implicit differentiation for MadSuite solvers. MadDiff leverages MadNLP's modular KKT and linear solver infrastructure, supporting LP, QP, and NLP using KKT systems from [MadNLP](https://github.com/MadNLP/MadNLP.jl), [MadIPM](https://github.com/MadNLP/MadIPM.jl), and [HybridKKT](https://github.com/MadNLP/HybridKKT.jl).
 
 > MadDiff is a work-in-progress and requires installing [forks of several dependencies](https://github.com/MadNLP/MadDiff.jl/blob/271ceec7f623789229e8c04a8bc6efa657867c38/test/Project.toml#L22-L28). Proceed with caution and verify correctness before use.
 

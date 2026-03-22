@@ -14,7 +14,6 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
 HybridKKT = "59d292e8-f99c-4495-a4cc-613f4397570f"
 MadIPM = "4406d55e-1099-4ca6-ac6a-6cf051b10024"
-MadNCL = "434a0bcb-5a7c-42b2-a9d3-9e3f760e7af0"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 
 [sources]
@@ -25,14 +24,12 @@ ParametricNLPModels = {rev = "main", url = "https://github.com/klamike/Parametri
 DiffOptExt = ["DiffOpt", "MathOptInterface"]
 HybridKKTExt = "HybridKKT"
 MadIPMExt = "MadIPM"
-MadNCLExt = "MadNCL"
 MathOptInterfaceExt = ["MathOptInterface"]
 
 [compat]
 DiffOpt = "0.5"
 HybridKKT = "0.3"
 MadIPM = "0.2"
-MadNCL = "0.2"
 MadNLP = "0.9"
 MathOptInterface = "1.20"
 NLPModels = "0.21"

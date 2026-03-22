@@ -1,6 +1,6 @@
 using Test, Random, LinearAlgebra
 using MadDiff
-using MadNLP, MadIPM, MadNCL, HybridKKT
+using MadNLP, MadIPM, HybridKKT
 using NLPModels, CUDA, MadNLPGPU, MadNLPTests, QuadraticModels, ExaModels
 using JuMP, DiffOpt, MathOptInterface
 const MOI = MathOptInterface
@@ -18,8 +18,6 @@ for (KKTSystem, Callback) in [
     (MadNLP.DenseKKTSystem, MadNLP.DenseCallback),
     (MadNLP.DenseCondensedKKTSystem, MadNLP.DenseCallback),
     (MadIPM.NormalKKTSystem, MadNLP.SparseCallback),
-    (MadNCL.K1sAuglagKKTSystem, MadNLP.SparseCallback),
-    (MadNCL.K2rAuglagKKTSystem, MadNLP.SparseCallback),
     (HybridKKT.HybridCondensedKKTSystem, MadNLP.SparseCallback),
     # TODO: BFGS support
     # TODO: Argos.jl (MixedAuglagKKTSystem, BieglerKKTSystem)
@@ -166,7 +164,7 @@ const KKT_CONFIGS = [
         dx_tol = 5e-4,
         dy_tol = 5e-3,
     ),  # /!\ reduced tolerances for condensed
-    # TODO: test MadIPM.Optimizer, MadNCL.Optimizer
+    # TODO: test MadIPM.Optimizer,
 ]
 
 if HAS_CUDA
