@@ -1,4 +1,4 @@
-# MadDiff.jl
+# MadDiff
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://madnlp.github.io/MadDiff.jl/dev/)
 [![Build Status](https://github.com/MadNLP/MadDiff.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MadNLP/MadDiff.jl/actions/workflows/ci.yml?query=branch%3Amain)
@@ -10,7 +10,7 @@ MadDiff implements forward and reverse mode implicit differentiation for MadSuit
 
 ## NLPModels interface
 
-> The NLPModels interface requires that your `AbstractNLPModel` implementation includes the [parametric AD API](https://github.com/JuliaSmoothOptimizers/NLPModels.jl/pull/557). Currently, this is automated only for the case when using MadNLP through JuMP ([fork](https://github.com/klamike/MadNLP.jl/tree/mk/moi_param)) or when using ExaModels ([fork](https://github.com/klamike/ExaModels.jl/tree/mk/param_ad)); support for other solvers and modelers is planned.
+> The NLPModels interface requires that your `AbstractNLPModel` implementation includes the [parametric AD API](https://klamike.github.io/ParametricNLPModels.jl/dev/). Currently, this is automated only for the case when using MadNLP through JuMP ([fork](https://github.com/klamike/MadNLP.jl/tree/mk/moi_param)) or when using ExaModels ([fork](https://github.com/klamike/ExaModels.jl/tree/mk/param_ad)); support for other solvers and modelers is planned.
 
 
 ```julia
