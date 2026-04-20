@@ -9,6 +9,8 @@ const HAS_CUDA = CUDA.functional()
 
 include("helpers.jl")
 
+include("test_diff.jl")
+
 @testset "adjoint_{solve,mul}!" begin
 for (KKTSystem, Callback) in [
     (MadNLP.SparseKKTSystem, MadNLP.SparseCallback),

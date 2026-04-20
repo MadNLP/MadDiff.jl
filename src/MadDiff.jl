@@ -39,11 +39,30 @@ include("utils/utils.jl")
 include("KKT/kkt.jl")
 include("jvp.jl")
 include("vjp.jl")
+include("chainrules_api.jl")
 
 export MadDiffSolver, MadDiffConfig
 export jacobian_vector_product!, vector_jacobian_product!
 export compute_objective_sensitivity!
 export reset_sensitivity_cache!
+export differentiable_solve, SolverSpec, Components
+
+"""
+    BatchMadDiffSolver(batch_solver::MadIPM.UniformBatchMPCSolver)
+
+Construct a batched sensitivity solver wrapping a solved `UniformBatchMPCSolver`.
+Provides `jacobian_vector_product!` / `vector_jacobian_product!` methods that
+operate on `(nparam, batch_size)` matrices and return per-instance results.
+
+!!! note
+    This constructor lives in the `MadIPMExt` extension. Load `MadIPM` (and
+    ensure `BatchQuadraticModels` is available) for the batch path. The
+    current MadIPM release refactored the batch solver's internal field
+    layout; the batch JVP/VJP adapters are on the `mk/batch` branch of this
+    repository and are in the process of being forward-ported — see the
+    project memory note `project_maddiff_batch.md` for status.
+"""
+function BatchMadDiffSolver end
 
 """
     diff_model(optimizer_constructor; kwargs...)

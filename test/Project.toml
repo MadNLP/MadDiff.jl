@@ -1,6 +1,8 @@
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 DiffOpt = "930fe3bc-9c6b-11ea-2d94-6184641e85e7"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 ExaModels = "1037b233-b668-4ce9-9b63-f9f681f55dd2"
 HybridKKT = "59d292e8-f99c-4495-a4cc-613f4397570f"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
