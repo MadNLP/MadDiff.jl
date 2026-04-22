@@ -1,140 +1,104 @@
-function MOI.set(
-        wrapper::DiffOptWrapper,
-        ::MadDiff.ReverseVariablePrimal,
-        vi::MOI.VariableIndex,
-        value::Real,
-    )
+# ============================================================================
+# Reverse-mode (VJP) entry points for `DiffOptWrapper`.
+# ============================================================================
+
+# Each seed setter marks outputs dirty; `reverse_differentiate!` clears once
+# before running. This keeps a loop of many `MOI.set` calls O(1) instead of
+# O(N · #outputs).
+function MOI.set(wrapper::DiffOptWrapper, ::MadDiff.ReverseVariablePrimal,
+                 vi::MOI.VariableIndex, value::Real)
     wrapper.reverse.primal_seeds[vi] = value
-    return _clear_outputs!(wrapper)  # keep KKT factorization
+    _mark_outputs_dirty!(wrapper)
+    return nothing
 end
 
-function MOI.set(
-        wrapper::DiffOptWrapper,
-        ::MadDiff.ReverseConstraintDual,
-        ci::MOI.ConstraintIndex,
-        value::Real,
-    )
+function MOI.set(wrapper::DiffOptWrapper, ::MadDiff.ReverseConstraintDual,
+                 ci::MOI.ConstraintIndex, value::Real)
     wrapper.reverse.dual_seeds[ci] = value
-    return _clear_outputs!(wrapper)  # keep KKT factorization
+    _mark_outputs_dirty!(wrapper)
+    return nothing
 end
 
-function MOI.set(
-        wrapper::DiffOptWrapper{OT, T},
-        ::MadDiff.ReverseObjectiveSensitivity,
-        value::Real,
-    ) where {OT, T}
+function MOI.set(wrapper::DiffOptWrapper{OT, T},
+                 ::MadDiff.ReverseObjectiveSensitivity, value::Real) where {OT, T}
     wrapper.reverse.dobj = value
-    return _clear_outputs!(wrapper)  # keep KKT factorization
+    _mark_outputs_dirty!(wrapper)
+    return nothing
 end
 
 function MadDiff.reverse_differentiate!(wrapper::DiffOptWrapper)
+    _outputs_dirty(wrapper) && _clear_outputs!(wrapper)
     wrapper.diff_time = @elapsed _reverse_differentiate_impl!(wrapper)
     return nothing
 end
 
-function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
-) where {S <: MOI.GreaterThan}
-    vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = vi.value
-    dL_dzl[idx] = val
-end
-
-function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
-) where {S <: MOI.LessThan}
-    vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = vi.value
-    dL_dzu[idx] = -val
-end
-
-function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
-) where {S <: MOI.Interval}
-    vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = vi.value
-    dL_dzl[idx] = val
-    dL_dzu[idx] = -val
-end
-
-function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{MOI.VariableIndex, S}, val, inner, dL_dy, dL_dzl, dL_dzu
-) where {S <: MOI.EqualTo}
-    vi = MOI.get(inner, MOI.ConstraintFunction(), ci)
-    idx = vi.value
-    dL_dzl[idx] = val
-    dL_dzu[idx] = -val
-end
-
-function _process_reverse_dual_input!(
-    ci::MOI.ConstraintIndex{F, S}, val, inner, dL_dy, dL_dzl, dL_dzu
-) where {F, S}
-    row = _constraint_row(inner, ci)
-    dL_dy[row] = val
-end
-
 function _reverse_differentiate_impl!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
-    inner = wrapper.inner
+    inner  = wrapper.inner
     solver = inner.solver
+    _check_ready(inner, solver)
 
-    isnothing(solver) && error("Optimizer must be solved first")
-    MadDiff.assert_solved_and_feasible(solver)
-    isempty(inner.parameters) && error("No parameters in model")
-
-    sens = _get_sensitivity_solver!(wrapper)
-
-    n_x = NLPModels.get_nvar(sens.solver.nlp)
+    sens  = _get_sensitivity_solver!(wrapper)
+    n_x   = NLPModels.get_nvar(sens.solver.nlp)
     n_con = NLPModels.get_ncon(solver.nlp)
 
-    dL_dx = _get_dL_dx!(wrapper, n_x)
+    dL_dx  = _scratch!(wrapper.work.dL_dx,  n_x)
+    dL_dy  = _scratch!(wrapper.work.dL_dy,  n_con)
+    dL_dzl = _scratch!(wrapper.work.dL_dzl, n_x)
+    dL_dzu = _scratch!(wrapper.work.dL_dzu, n_x)
+
     for (vi, val) in wrapper.reverse.primal_seeds
-        idx = vi.value
-        dL_dx[idx] = val
+        dL_dx[vi.value] = val
     end
-
-    dL_dy = _get_dL_dy!(wrapper, n_con)
-    dL_dzl = _get_dL_dzl!(wrapper, n_x)
-    dL_dzu = _get_dL_dzu!(wrapper, n_x)
-
+    n_qp = length(inner.qp_data.constraints)
     for (ci, val) in wrapper.reverse.dual_seeds
-        _process_reverse_dual_input!(ci, val, inner, dL_dy, dL_dzl, dL_dzu)
+        _place_reverse_seed!(ci, val, inner, n_qp, dL_dy, dL_dzl, dL_dzu)
     end
-
     dL_dy .*= -solver.cb.obj_sign
-    dobj = wrapper.reverse.dobj
 
-    VT = typeof(solver.y)
-    if VT <: Vector
-        result = MadDiff.vector_jacobian_product!(sens; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj)
-        grad_p_cpu = result.grad_p
-    else
-        # TODO: pre-allocate
-        dL_dx_gpu = VT(dL_dx)
-        dL_dy_gpu = VT(dL_dy)
-        dL_dzl_gpu = VT(dL_dzl)
-        dL_dzu_gpu = VT(dL_dzu)
-        result = MadDiff.vector_jacobian_product!(sens; dL_dx=dL_dx_gpu, dL_dy=dL_dy_gpu, dL_dzl=dL_dzl_gpu, dL_dzu=dL_dzu_gpu, dobj)
-        grad_p_cpu = Array(result.grad_p)
-    end
+    dev(v) = _to_device(v, solver.y)
+    result = MadDiff.vector_jacobian_product!(
+        sens;
+        dL_dx  = dev(dL_dx),  dL_dy  = dev(dL_dy),
+        dL_dzl = dev(dL_dzl), dL_dzu = dev(dL_dzu),
+        dobj   = wrapper.reverse.dobj,
+    )
+    grad_p = _to_host(result.grad_p)
 
     for (ci, vi) in wrapper.param_ci_to_vi
-        idx = inner.param_vi_to_idx[vi]
-        wrapper.reverse.param_outputs[ci] = grad_p_cpu[idx]
+        wrapper.reverse.param_outputs[ci] = grad_p[inner.param_vi_to_idx[vi]]
     end
-    return
+    return nothing
 end
 
-function MOI.get(
-        wrapper::DiffOptWrapper,
-        ::MadDiff.ReverseConstraintSet,
-        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
-    ) where {T}
-    return MOI.Parameter(wrapper.reverse.param_outputs[ci])
+# ---------- dual seed placement ----------
+
+# Variable-bound constraints push seeds into the bound-dual slots; every other
+# constraint kind routes to `dL_dy` via `_constraint_row`.
+function _place_reverse_seed!(ci::MOI.ConstraintIndex{MOI.VariableIndex, S},
+                               val, inner, _n_qp, _dL_dy, dL_dzl, dL_dzu) where {S}
+    idx = MOI.get(inner, MOI.ConstraintFunction(), ci).value
+    if S <: MOI.GreaterThan
+        dL_dzl[idx] =  val
+    elseif S <: MOI.LessThan
+        dL_dzu[idx] = -val
+    elseif S <: Union{MOI.Interval, MOI.EqualTo}
+        dL_dzl[idx] =  val
+        dL_dzu[idx] = -val
+    else
+        error("MadDiff: unsupported variable-bound set $(S) for reverse seed.")
+    end
+    return nothing
 end
 
-function MadDiff.get_reverse_parameter(
-        wrapper::DiffOptWrapper,
-        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
-    ) where {T}
-    return wrapper.reverse.param_outputs[ci]
-end
+_place_reverse_seed!(ci::MOI.ConstraintIndex, val, _inner, n_qp, dL_dy, _dzl, _dzu) =
+    (dL_dy[_constraint_row(n_qp, ci)] = val; nothing)
+
+# ---------- getters ----------
+
+MOI.get(wrapper::DiffOptWrapper, ::MadDiff.ReverseConstraintSet,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}}) where {T} =
+    MOI.Parameter(wrapper.reverse.param_outputs[ci])
+
+MadDiff.get_reverse_parameter(wrapper::DiffOptWrapper,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}}) where {T} =
+    wrapper.reverse.param_outputs[ci]

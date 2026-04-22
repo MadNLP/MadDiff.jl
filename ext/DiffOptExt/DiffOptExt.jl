@@ -1,258 +1,216 @@
 module DiffOptExt
 
-import MadDiff
-import DiffOpt
-import MadNLP
-const MOI = DiffOpt.MOI
-const POI = DiffOpt.POI
+# ============================================================================
+# MadDiff × DiffOpt.
+#
+# `DiffOptModel` is the inner solver DiffOpt instantiates (via its
+# `ModelConstructor`) on top of a solved MadNLP. It re-routes DiffOpt's
+# attribute-based API (`ForwardDifferentiate`, `ReverseDifferentiate`, the
+# sensitivity getters/setters) to MadDiff's MOI extension, which runs the
+# actual JVP/VJP kernels.
+#
+# The key wiring is `_unwrap_to_madnlp`: walk DiffOpt's layered optimizer
+# (caching → bridges → POI → MadNLP), compose the index maps, and yield the
+# MadNLP optimizer plus a source→MadNLP index map.
+# ============================================================================
 
-MOIExt = Base.get_extension(MadDiff, :MathOptInterfaceExt)
+import DiffOpt
+import MadDiff
+import MadNLP
+
+const MOI     = DiffOpt.MOI
+const POI     = DiffOpt.POI
+const MOIExt  = Base.get_extension(MadDiff, :MathOptInterfaceExt)
+
+# ---------- DiffOptModel ----------
 
 mutable struct DiffOptModel <: MOI.AbstractOptimizer
-    wrapper::Union{Nothing,MOIExt.DiffOptWrapper}
+    wrapper::Union{Nothing, MOIExt.DiffOptWrapper}
     source_to_inner::MOI.Utilities.IndexMap
     sensitivity_config::MadDiff.MadDiffConfig
 end
 
-function DiffOptModel(; sensitivity_config::MadDiff.MadDiffConfig = MadDiff.MadDiffConfig())
-    return DiffOptModel(nothing, MOI.Utilities.IndexMap(), sensitivity_config)
-end
+DiffOptModel(; sensitivity_config::MadDiff.MadDiffConfig = MadDiff.MadDiffConfig()) =
+    DiffOptModel(nothing, MOI.Utilities.IndexMap(), sensitivity_config)
 
 _backend(model::DiffOptModel) = model.wrapper::MOIExt.DiffOptWrapper
+_map(model::DiffOptModel, idx) = model.source_to_inner[idx]
+
+# ---------- MOI plumbing ----------
 
 MOI.supports_incremental_interface(::DiffOptModel) = true
 MOI.supports_add_constrained_variable(::DiffOptModel, ::Type{<:MOI.AbstractScalarSet}) = true
 MOI.supports_add_constrained_variables(::DiffOptModel, ::Type{<:MOI.AbstractVectorSet}) = true
 MOI.supports_add_constrained_variables(::DiffOptModel, ::Type{MOI.Reals}) = true
 MOI.supports_constraint(::DiffOptModel, ::Type{<:MOI.AbstractFunction}, ::Type{<:MOI.AbstractSet}) = true
-MOI.is_empty(model::DiffOptModel) = isnothing(model.wrapper)
+MOI.is_empty(model::DiffOptModel) = model.wrapper === nothing
 
 function MOI.empty!(model::DiffOptModel)
     model.wrapper = nothing
     model.source_to_inner = MOI.Utilities.IndexMap()
-    return
+    return nothing
 end
+
+MOI.get(::DiffOptModel, ::MOI.SolverName) = "MadDiff[MadNLP]"
+
+# ---------- MadNLP unwrapping ----------
 
 function _madnlp_optimizer_type()
-    if isdefined(MadNLP, :Optimizer)
-        return getproperty(MadNLP, :Optimizer)
-    end
+    isdefined(MadNLP, :Optimizer) && return getproperty(MadNLP, :Optimizer)
     ext = Base.get_extension(MadNLP, :MathOptInterfaceExt)
-    if isnothing(ext)
-        return nothing
+    ext === nothing ? nothing : getproperty(ext, :Optimizer)
+end
+
+_is_madnlp_optimizer(opt) =
+    let T = _madnlp_optimizer_type(); T !== nothing && opt isa T end
+
+function _compose(source_to_mid::MOI.Utilities.IndexMap,
+                   mid_to_dest::MOI.Utilities.IndexMap)
+    out = MOI.Utilities.IndexMap()
+    for (src, mid) in source_to_mid
+        out[src] = mid_to_dest[mid]
     end
-    return getproperty(ext, :Optimizer)
+    return out
 end
 
-function _is_madnlp_optimizer(optimizer)
-    optimizer_type = _madnlp_optimizer_type()
-    return !isnothing(optimizer_type) && optimizer isa optimizer_type
-end
+_has_active_bridges(m::MOI.Bridges.LazyBridgeOptimizer) =
+    !isempty(MOI.Bridges.Variable.bridges(m))  ||
+    !isempty(MOI.Bridges.Constraint.bridges(m)) ||
+    !isempty(MOI.Bridges.Objective.bridges(m))
 
-function _compose_index_maps(
-    source_to_mid::MOI.Utilities.IndexMap,
-    mid_to_dest::MOI.Utilities.IndexMap,
-)
-    output = MOI.Utilities.IndexMap()
-    for (source, mid) in source_to_mid
-        output[source] = mid_to_dest[mid]
-    end
-    return output
-end
-
-function _has_active_bridges(model::MOI.Bridges.LazyBridgeOptimizer)
-    return !isempty(MOI.Bridges.Variable.bridges(model)) ||
-           !isempty(MOI.Bridges.Constraint.bridges(model)) ||
-           !isempty(MOI.Bridges.Objective.bridges(model))
-end
-
-function _unwrap_to_madnlp(
-    root_optimizer,
-    optimizer,
-    source_to_optimizer::Union{Nothing,MOI.Utilities.IndexMap},
-)
+function _unwrap_to_madnlp(root, optimizer, src_to_opt)
     _is_madnlp_optimizer(optimizer) &&
-        return optimizer, something(source_to_optimizer, MOI.Utilities.identity_index_map(root_optimizer))
-    error("MadDiff requires a wrapper chain ending in MadNLP. Got $(typeof(optimizer)).")
+        return optimizer, something(src_to_opt, MOI.Utilities.identity_index_map(root))
+    error("MadDiff: DiffOpt chain must end in MadNLP; got $(typeof(optimizer)).")
 end
 
-function _unwrap_to_madnlp(
-    root_optimizer,
-    optimizer::MOI.Utilities.CachingOptimizer,
-    source_to_optimizer::Union{Nothing,MOI.Utilities.IndexMap},
-)
-    map_step = deepcopy(optimizer.model_to_optimizer_map)
-    source_to_inner = isnothing(source_to_optimizer) ?
-        map_step : _compose_index_maps(source_to_optimizer, map_step)
-    return _unwrap_to_madnlp(root_optimizer, optimizer.optimizer, source_to_inner)
+function _unwrap_to_madnlp(root, optimizer::MOI.Utilities.CachingOptimizer, src_to_opt)
+    step = deepcopy(optimizer.model_to_optimizer_map)
+    next = src_to_opt === nothing ? step : _compose(src_to_opt, step)
+    return _unwrap_to_madnlp(root, optimizer.optimizer, next)
 end
 
-function _unwrap_to_madnlp(
-    root_optimizer,
-    optimizer::MOI.Bridges.LazyBridgeOptimizer,
-    source_to_optimizer::Union{Nothing,MOI.Utilities.IndexMap},
-)
+function _unwrap_to_madnlp(root, optimizer::MOI.Bridges.LazyBridgeOptimizer, src_to_opt)
     _has_active_bridges(optimizer) &&
-        error("MadDiff does not support active MOI bridges in the DiffOpt chain.")
-    return _unwrap_to_madnlp(root_optimizer, optimizer.model, source_to_optimizer)
+        error("MadDiff: active MOI bridges in the DiffOpt chain are not supported.")
+    return _unwrap_to_madnlp(root, optimizer.model, src_to_opt)
 end
 
-function _unwrap_to_madnlp(
-    root_optimizer,
-    optimizer::POI.Optimizer,
-    source_to_optimizer::Union{Nothing,MOI.Utilities.IndexMap},
-)
-    return _unwrap_to_madnlp(root_optimizer, optimizer.optimizer, source_to_optimizer)
-end
+_unwrap_to_madnlp(root, optimizer::POI.Optimizer, src_to_opt) =
+    _unwrap_to_madnlp(root, optimizer.optimizer, src_to_opt)
 
-_unwrap_to_madnlp(root_optimizer) = _unwrap_to_madnlp(root_optimizer, root_optimizer, nothing)
+_unwrap_to_madnlp(root) = _unwrap_to_madnlp(root, root, nothing)
 
-function _refresh_parameter_map!(
-    optimizer::MOIExt.DiffOptWrapper,
-    source_optimizer,
-    source_to_madnlp::MOI.Utilities.IndexMap,
-)
-    empty!(optimizer.param_ci_to_vi)
-    for source_ci in MOI.get(
-        source_optimizer,
-        MOI.ListOfConstraintIndices{
-            MOI.VariableIndex,
-            MOI.Parameter{Float64},
-        }(),
-    )
-        source_vi = MOI.get(source_optimizer, MOI.ConstraintFunction(), source_ci)
-        optimizer.param_ci_to_vi[source_to_madnlp[source_ci]] =
-            source_to_madnlp[source_vi]
+function _refresh_parameter_map!(wrapper::MOIExt.DiffOptWrapper, src, src_to_mad)
+    empty!(wrapper.param_ci_to_vi)
+    for src_ci in MOI.get(src, MOI.ListOfConstraintIndices{
+            MOI.VariableIndex, MOI.Parameter{Float64}}())
+        src_vi = MOI.get(src, MOI.ConstraintFunction(), src_ci)
+        wrapper.param_ci_to_vi[src_to_mad[src_ci]] = src_to_mad[src_vi]
     end
-    return optimizer
+    return wrapper
 end
+
+# ---------- copy_to: install the MadNLP-backed wrapper ----------
 
 function MOI.copy_to(model::DiffOptModel, src::MOI.ModelLike)
-    madnlp_optimizer, source_to_madnlp = _unwrap_to_madnlp(src)
-    backend = MOIExt.DiffOptWrapper(madnlp_optimizer)
-    backend.sensitivity_config = deepcopy(model.sensitivity_config)
-    _refresh_parameter_map!(backend, src, source_to_madnlp)
-    model.wrapper = backend
-    model.source_to_inner = source_to_madnlp
+    madnlp, src_to_mad = _unwrap_to_madnlp(src)
+    wrapper = MOIExt.DiffOptWrapper(madnlp)
+    wrapper.sensitivity_config = deepcopy(model.sensitivity_config)
+    _refresh_parameter_map!(wrapper, src, src_to_mad)
+    model.wrapper = wrapper
+    model.source_to_inner = src_to_mad
     return MOI.Utilities.identity_index_map(src)
 end
 
-function MOI.copy_to(
-    model::MOI.Bridges.LazyBridgeOptimizer{<:DiffOptModel},
-    src::MOI.ModelLike,
-)
-    return MOI.copy_to(model.model, src)
-end
+MOI.copy_to(model::MOI.Bridges.LazyBridgeOptimizer{<:DiffOptModel},
+             src::MOI.ModelLike) = MOI.copy_to(model.model, src)
 
-_map_source_to_inner(model::DiffOptModel, idx) = model.source_to_inner[idx]
+# ---------- trigger attributes ----------
+#
+# DiffOpt now routes `forward_differentiate!(::JuMP.Model)` through
+# `MOI.set(model, DiffOpt.ForwardDifferentiate(), nothing)`; same for reverse.
 
-DiffOpt.forward_differentiate!(model::DiffOptModel) =
-    MadDiff.forward_differentiate!(_backend(model))
-DiffOpt.reverse_differentiate!(model::DiffOptModel) =
-    MadDiff.reverse_differentiate!(_backend(model))
-DiffOpt.empty_input_sensitivities!(model::DiffOptModel) =
-    MadDiff.empty_input_sensitivities!(_backend(model))
-
+MOI.supports(::DiffOptModel, ::DiffOpt.ForwardDifferentiate)           = true
+MOI.supports(::DiffOptModel, ::DiffOpt.ReverseDifferentiate)           = true
 MOI.supports(::DiffOptModel, ::DiffOpt.NonLinearKKTJacobianFactorization) = true
-MOI.supports(::DiffOptModel, ::DiffOpt.AllowObjectiveAndSolutionInput) = true
+MOI.supports(::DiffOptModel, ::DiffOpt.AllowObjectiveAndSolutionInput)   = true
+
+MOI.set(m::DiffOptModel, ::DiffOpt.ForwardDifferentiate, ::Nothing) =
+    (MadDiff.forward_differentiate!(_backend(m)); nothing)
+MOI.set(m::DiffOptModel, ::DiffOpt.ReverseDifferentiate, ::Nothing) =
+    (MadDiff.reverse_differentiate!(_backend(m)); nothing)
 MOI.set(::DiffOptModel, ::DiffOpt.NonLinearKKTJacobianFactorization, _) = nothing
-MOI.set(::DiffOptModel, ::DiffOpt.AllowObjectiveAndSolutionInput, _) = nothing
+MOI.set(::DiffOptModel, ::DiffOpt.AllowObjectiveAndSolutionInput,   _) = nothing
 
-function MOI.set(
-    model::DiffOptModel,
-    ::DiffOpt.ForwardConstraintSet,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.Parameter{T}},
-    set::MOI.Parameter{T},
-) where {T}
-    inner_ci = _map_source_to_inner(model, ci)
-    return MOI.set(_backend(model), MadDiff.ForwardConstraintSet(), inner_ci, set)
-end
+# Direct function-level dispatch (used by backend callers; redundant once the
+# attribute triggers above exist, but kept for the direct API).
+DiffOpt.forward_differentiate!(m::DiffOptModel)     = MadDiff.forward_differentiate!(_backend(m))
+DiffOpt.reverse_differentiate!(m::DiffOptModel)     = MadDiff.reverse_differentiate!(_backend(m))
+DiffOpt.empty_input_sensitivities!(m::DiffOptModel) = MadDiff.empty_input_sensitivities!(_backend(m))
 
-function MOI.get(
-    model::DiffOptModel,
-    ::DiffOpt.ForwardVariablePrimal,
-    vi::MOI.VariableIndex,
-)
-    inner_vi = _map_source_to_inner(model, vi)
-    return MOI.get(_backend(model), MadDiff.ForwardVariablePrimal(), inner_vi)
-end
+# ---------- sensitivity in/out: forward ----------
 
-function MOI.get(
-    model::DiffOptModel,
-    ::DiffOpt.ForwardConstraintDual,
-    ci::MOI.ConstraintIndex,
-)
-    inner_ci = _map_source_to_inner(model, ci)
-    return MOI.get(_backend(model), MadDiff.ForwardConstraintDual(), inner_ci)
-end
+MOI.set(m::DiffOptModel, ::DiffOpt.ForwardConstraintSet,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}},
+        set::MOI.Parameter{T}) where {T} =
+    MOI.set(_backend(m), MadDiff.ForwardConstraintSet(), _map(m, ci), set)
 
-MOI.get(model::DiffOptModel, ::DiffOpt.ForwardObjectiveSensitivity) =
-    MOI.get(_backend(model), MadDiff.ForwardObjectiveSensitivity())
+MOI.get(m::DiffOptModel, ::DiffOpt.ForwardVariablePrimal, vi::MOI.VariableIndex) =
+    MOI.get(_backend(m), MadDiff.ForwardVariablePrimal(), _map(m, vi))
 
-function MOI.set(
-    model::DiffOptModel,
-    ::DiffOpt.ReverseVariablePrimal,
-    vi::MOI.VariableIndex,
-    value,
-)
-    inner_vi = _map_source_to_inner(model, vi)
-    return MOI.set(_backend(model), MadDiff.ReverseVariablePrimal(), inner_vi, value)
-end
+MOI.get(m::DiffOptModel, ::DiffOpt.ForwardConstraintDual, ci::MOI.ConstraintIndex) =
+    MOI.get(_backend(m), MadDiff.ForwardConstraintDual(), _map(m, ci))
 
-function MOI.set(
-    model::DiffOptModel,
-    ::DiffOpt.ReverseConstraintDual,
-    ci::MOI.ConstraintIndex,
-    value,
-)
-    inner_ci = _map_source_to_inner(model, ci)
-    return MOI.set(_backend(model), MadDiff.ReverseConstraintDual(), inner_ci, value)
-end
+MOI.get(m::DiffOptModel, ::DiffOpt.ForwardObjectiveSensitivity) =
+    MOI.get(_backend(m), MadDiff.ForwardObjectiveSensitivity())
 
-MOI.set(model::DiffOptModel, ::DiffOpt.ReverseObjectiveSensitivity, value) =
-    MOI.set(_backend(model), MadDiff.ReverseObjectiveSensitivity(), value)
+# ---------- sensitivity in/out: reverse ----------
 
-function MOI.get(
-    model::DiffOptModel,
-    ::DiffOpt.ReverseConstraintSet,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.Parameter{T}},
-) where {T}
-    inner_ci = _map_source_to_inner(model, ci)
-    return MOI.get(_backend(model), MadDiff.ReverseConstraintSet(), inner_ci)
-end
+MOI.set(m::DiffOptModel, ::DiffOpt.ReverseVariablePrimal,
+        vi::MOI.VariableIndex, value) =
+    MOI.set(_backend(m), MadDiff.ReverseVariablePrimal(), _map(m, vi), value)
 
-MOI.get(model::DiffOptModel, ::DiffOpt.DifferentiateTimeSec) =
-    MOI.get(_backend(model), MadDiff.DifferentiateTimeSec())
+MOI.set(m::DiffOptModel, ::DiffOpt.ReverseConstraintDual,
+        ci::MOI.ConstraintIndex, value) =
+    MOI.set(_backend(m), MadDiff.ReverseConstraintDual(), _map(m, ci), value)
 
-DiffOpt.get_reverse_parameter(
-    model::DiffOptModel,
-    ci::MOI.ConstraintIndex{MOI.VariableIndex,MOI.Parameter{T}},
-) where {T} = MadDiff.get_reverse_parameter(
-    _backend(model),
-    _map_source_to_inner(model, ci),
-)
+MOI.set(m::DiffOptModel, ::DiffOpt.ReverseObjectiveSensitivity, value) =
+    MOI.set(_backend(m), MadDiff.ReverseObjectiveSensitivity(), value)
 
-MOI.get(model::DiffOptModel, ::MOI.SolverName) = "MadDiff[MadNLP]"
+MOI.get(m::DiffOptModel, ::DiffOpt.ReverseConstraintSet,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}}) where {T} =
+    MOI.get(_backend(m), MadDiff.ReverseConstraintSet(), _map(m, ci))
 
+DiffOpt.get_reverse_parameter(m::DiffOptModel,
+        ci::MOI.ConstraintIndex{MOI.VariableIndex, MOI.Parameter{T}}) where {T} =
+    MadDiff.get_reverse_parameter(_backend(m), _map(m, ci))
+
+MOI.get(m::DiffOptModel, ::DiffOpt.DifferentiateTimeSec) =
+    MOI.get(_backend(m), MadDiff.DifferentiateTimeSec())
+
+# DiffOpt attempts to round-trip duals; our wrapper doesn't need that.
 DiffOpt._copy_dual(::DiffOptModel, ::MOI.ModelLike, _) = nothing
-DiffOpt._copy_dual(
-    ::MOI.Bridges.LazyBridgeOptimizer{<:DiffOptModel},
-    ::MOI.ModelLike,
-    _,
-) = nothing
+DiffOpt._copy_dual(::MOI.Bridges.LazyBridgeOptimizer{<:DiffOptModel},
+                   ::MOI.ModelLike, _) = nothing
+
+# ---------- public entry points ----------
 
 """
-    MadDiff.diffopt_model_constructor(; config = MadDiff.MadDiffConfig())
+    MadDiff.diffopt_model_constructor(; config = MadDiffConfig())
 
-Return a DiffOpt `ModelConstructor` callable that reuses a solved MadNLP
-optimizer for differentiation.
+Return a `DiffOpt.ModelConstructor` callable that installs a `DiffOptModel`
+(MadNLP-backed) as DiffOpt's inner sensitivity optimizer.
 """
-function MadDiff.diffopt_model_constructor(;
-    config::MadDiff.MadDiffConfig = MadDiff.MadDiffConfig(),
-)
-    return () -> DiffOptModel(; sensitivity_config = config)
-end
+MadDiff.diffopt_model_constructor(; config::MadDiff.MadDiffConfig = MadDiff.MadDiffConfig()) =
+    () -> DiffOptModel(; sensitivity_config = config)
 
+"""
+    MadDiff.diff_model(optimizer_constructor; config = MadDiffConfig(), kwargs...)
+
+Build a JuMP model whose optimizer chain ends in MadNLP and whose
+differentiation backend is MadDiff.
+"""
 function MadDiff.diff_model(
     optimizer_constructor;
     config::MadDiff.MadDiffConfig = MadDiff.MadDiffConfig(),
@@ -260,12 +218,9 @@ function MadDiff.diff_model(
 )
     model = DiffOpt.diff_model(optimizer_constructor; kwargs...)
     MOI.set(model, DiffOpt.AllowObjectiveAndSolutionInput(), true)
-    MOI.set(
-        model,
-        DiffOpt.ModelConstructor(),
-        MadDiff.diffopt_model_constructor(config = config),
-    )
+    MOI.set(model, DiffOpt.ModelConstructor(),
+            MadDiff.diffopt_model_constructor(config = config))
     return model
 end
 
-end # module DiffOptExt
+end # module

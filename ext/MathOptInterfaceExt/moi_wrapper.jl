@@ -1,3 +1,12 @@
+# ============================================================================
+# Cache/lifecycle helpers for `DiffOptWrapper`.
+#
+# `empty_input_sensitivities!` clears user-set seeds and drops cached outputs
+# but keeps the KKT factorization. `_clear_outputs!` alone drops outputs when
+# a seed change invalidates them; it is lazy-triggered by the `outputs_dirty`
+# flag flipped by the individual MOI setters.
+# ============================================================================
+
 MOI.get(wrapper::DiffOptWrapper, ::MadDiff.DifferentiateTimeSec) = wrapper.diff_time
 
 function MadDiff.empty_input_sensitivities!(wrapper::DiffOptWrapper)
@@ -5,7 +14,8 @@ function MadDiff.empty_input_sensitivities!(wrapper::DiffOptWrapper)
     empty!(wrapper.reverse.primal_seeds)
     empty!(wrapper.reverse.dual_seeds)
     wrapper.reverse.dobj = nothing
-    return _clear_outputs!(wrapper)
+    _clear_outputs!(wrapper)
+    return wrapper
 end
 
 function _clear_outputs!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
@@ -15,33 +25,21 @@ function _clear_outputs!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
     wrapper.forward.jvp_result = nothing
     wrapper.forward.param_direction = nothing
     empty!(wrapper.reverse.param_outputs)
-    return wrapper.diff_time = zero(T)
-end
-
-function _invalidate_factorization!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
-    wrapper.sensitivity_solver = nothing
-    return _clear_outputs!(m)
-end
-
-function _invalidate_sensitivity!(wrapper::DiffOptWrapper{OT, T}) where {OT, T}
-    return _invalidate_factorization!(wrapper)
+    wrapper.diff_time = zero(T)
+    wrapper.outputs_dirty = false
+    return wrapper
 end
 
 function _get_sensitivity_solver!(wrapper::DiffOptWrapper)
-    if isnothing(wrapper.sensitivity_solver)
-        wrapper.sensitivity_solver = MadDiff.MadDiffSolver(wrapper.inner.solver; config = wrapper.sensitivity_config)
-    end
+    wrapper.sensitivity_solver === nothing || return wrapper.sensitivity_solver
+    wrapper.sensitivity_solver = MadDiff.MadDiffSolver(
+        wrapper.inner.solver; config = wrapper.sensitivity_config,
+    )
     return wrapper.sensitivity_solver
 end
 
-function _resize_and_zero!(cache::Vector{T}, n::Int) where {T}
-    length(cache) != n && resize!(cache, n)
-    fill!(cache, zero(T))
-    return cache
+function _scratch!(buf::AbstractVector{T}, n::Int) where {T}
+    length(buf) == n || resize!(buf, n)
+    fill!(buf, zero(T))
+    return buf
 end
-
-_get_dy_cache!(wrapper::DiffOptWrapper, n::Int) = _resize_and_zero!(wrapper.work.dy_cache, n)
-_get_dL_dx!(wrapper::DiffOptWrapper, n::Int) = _resize_and_zero!(wrapper.work.dL_dx, n)
-_get_dL_dy!(wrapper::DiffOptWrapper, n::Int) = _resize_and_zero!(wrapper.work.dL_dy, n)
-_get_dL_dzl!(wrapper::DiffOptWrapper, n::Int) = _resize_and_zero!(wrapper.work.dL_dzl, n)
-_get_dL_dzu!(wrapper::DiffOptWrapper, n::Int) = _resize_and_zero!(wrapper.work.dL_dzu, n)

@@ -1,24 +1,36 @@
 module MathOptInterfaceExt
 
+# ============================================================================
+# MadDiff × MathOptInterface.
+#
+# `DiffOptWrapper` adapts a solved `MadNLP.Optimizer` to the MadDiff MOI
+# attribute surface (`Forward*`, `Reverse*`). The DiffOpt extension sits on
+# top and forwards DiffOpt's matching attributes to ours.
+# ============================================================================
+
 import MadDiff
-import MadNLP; const NLPModels = MadNLP.NLPModels
+import MadNLP
 import MathOptInterface as MOI
+
+const NLPModels = MadNLP.NLPModels
+
+# ---------- per-mode state ----------
 
 mutable struct ForwardModeData{T}
     param_perturbations::Dict{MOI.ConstraintIndex, T}
     primal_sensitivities::Dict{MOI.VariableIndex, T}
     dual_sensitivities::Dict{MOI.ConstraintIndex, T}
     objective_sensitivity::Union{Nothing, T}
-    jvp_result
-    param_direction
+    # Populated on first `forward_differentiate!`; VT (device vector type) is
+    # only known then, so store without a VT parameter. Nothing/Union{} keeps
+    # Julia's field-tag specialisation cheap — much better than `::Any`.
+    jvp_result::Union{Nothing, MadDiff.JVPResult}
+    param_direction::Union{Nothing, AbstractVector{T}}
 end
+
 ForwardModeData{T}() where {T} = ForwardModeData{T}(
-    Dict{MOI.ConstraintIndex, T}(),
-    Dict{MOI.VariableIndex, T}(),
-    Dict{MOI.ConstraintIndex, T}(),
-    nothing,
-    nothing,
-    nothing,
+    Dict{MOI.ConstraintIndex, T}(), Dict{MOI.VariableIndex, T}(),
+    Dict{MOI.ConstraintIndex, T}(), nothing, nothing, nothing,
 )
 
 mutable struct ReverseModeData{T}
@@ -27,27 +39,30 @@ mutable struct ReverseModeData{T}
     param_outputs::Dict{MOI.ConstraintIndex, T}
     dobj::Union{Nothing, T}
 end
+
 ReverseModeData{T}() where {T} = ReverseModeData{T}(
-    Dict{MOI.VariableIndex, T}(),
-    Dict{MOI.ConstraintIndex, T}(),
-    Dict{MOI.ConstraintIndex, T}(),
-    nothing,
+    Dict{MOI.VariableIndex, T}(), Dict{MOI.ConstraintIndex, T}(),
+    Dict{MOI.ConstraintIndex, T}(), nothing,
 )
 
+# Resizeable scratch for the CPU-side staging buffers used to marshal seeds
+# into MadDiff and unmarshal results back. All buffers are reused across
+# `forward_differentiate!` / `reverse_differentiate!` calls to avoid per-call
+# `zeros(T, n)` allocations on the happy path.
 mutable struct WorkBuffers{T}
-    dy_cache::Vector{T}
-    dL_dx::Vector{T}
-    dL_dy::Vector{T}
-    dL_dzl::Vector{T}
-    dL_dzu::Vector{T}
+    dp::Vector{T}        # forward:  dense perturbation Δp
+    dy::Vector{T}        # forward:  sign-adjusted dual sensitivities
+    dL_dx::Vector{T}     # reverse:  primal seeds staging
+    dL_dy::Vector{T}     # reverse:  dual  seeds staging
+    dL_dzl::Vector{T}    # reverse:  lower-bound dual seeds staging
+    dL_dzu::Vector{T}    # reverse:  upper-bound dual seeds staging
 end
+
 WorkBuffers{T}() where {T} = WorkBuffers{T}(
-    Vector{T}(undef, 0),
-    Vector{T}(undef, 0),
-    Vector{T}(undef, 0),
-    Vector{T}(undef, 0),
-    Vector{T}(undef, 0),
+    T[], T[], T[], T[], T[], T[],
 )
+
+# ---------- wrapper ----------
 
 mutable struct DiffOptWrapper{OT <: MOI.AbstractOptimizer, T}
     inner::OT
@@ -58,20 +73,21 @@ mutable struct DiffOptWrapper{OT <: MOI.AbstractOptimizer, T}
     sensitivity_config::MadDiff.MadDiffConfig
     sensitivity_solver::Union{Nothing, MadDiff.MadDiffSolver}
     diff_time::T
+    # `true` whenever a seed has been set since the last `_clear_outputs!`.
+    # Batched setters mark dirty; `*_differentiate!` flushes once before solving.
+    outputs_dirty::Bool
 end
 
-function DiffOptWrapper(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimizer}
-    return DiffOptWrapper{OT, T}(
-        inner,
-        Dict{MOI.ConstraintIndex, MOI.VariableIndex}(),
-        ForwardModeData{T}(),
-        ReverseModeData{T}(),
-        WorkBuffers{T}(),
-        MadDiff.MadDiffConfig(),
-        nothing,
-        zero(T),
+DiffOptWrapper(inner::OT; T::Type = Float64) where {OT <: MOI.AbstractOptimizer} =
+    DiffOptWrapper{OT, T}(
+        inner, Dict{MOI.ConstraintIndex, MOI.VariableIndex}(),
+        ForwardModeData{T}(), ReverseModeData{T}(), WorkBuffers{T}(),
+        MadDiff.MadDiffConfig(), nothing, zero(T), false,
     )
-end
+
+@inline _mark_outputs_dirty!(wrapper::DiffOptWrapper) =
+    (wrapper.outputs_dirty = true; nothing)
+@inline _outputs_dirty(wrapper::DiffOptWrapper) = wrapper.outputs_dirty
 
 include("moi_wrapper.jl")
 include("forward_mode.jl")
