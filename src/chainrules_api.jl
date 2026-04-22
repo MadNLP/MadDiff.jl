@@ -1,47 +1,49 @@
-# =============================================================================
-# Public API surface for the ChainRulesCore extension
-# -----------------------------------------------------------------------------
-# These stubs define the symbols that `MadDiffChainRulesCoreExt` fills in when
-# `ChainRulesCore` is loaded. If the user calls `differentiable_solve` without
-# having loaded ChainRulesCore, we raise an instructive error instead of a
-# MethodError.
+# ============================================================================
+# ChainRulesCore surface
 #
-# The API is deliberately close to `Moreau.jl`'s pattern: a `SolverSpec` packs
-# a forward-pass closure ("given `p`, solve the problem and return the
-# `MadDiffSolver`") plus metadata; `differentiable_solve(spec; components)`
-# returns a ChainRulesCore-friendly function `p -> NamedTuple`. `components`
-# is a compile-time tag so the adjoint only computes the KKT back-solves that
-# are actually needed.
-# =============================================================================
+# Public types (`SolverSpec`, `Components`) and entry points
+# (`differentiable_solve`, `_solve_forward`) live here; the actual rrules are
+# in `MadDiffChainRulesCoreExt`. Design mirrors `Moreau.jl`: a `SolverSpec`
+# wraps the user's `p -> (solver, obj)` closure; `differentiable_solve`
+# returns a `p -> NamedTuple` with a `ChainRulesCore.rrule` registered that
+# back-solves the KKT system at the optimum.
+# ============================================================================
 
 """
-    Components{tuple_of_symbols}
+    Components{C}
 
-Type-level tag carrying the set of solution components that the caller cares
-about. Valid symbols are `:x`, `:y`, `:zl`, `:zu`, `:obj`. Used internally by
-[`differentiable_solve`](@ref) so that the ChainRulesCore `rrule` can elide
-KKT back-solves for components the user didn't request.
+Type-level tag carrying the solution components to return from
+[`differentiable_solve`](@ref). `C` is a tuple drawn from
+`(:x, :y, :zl, :zu, :obj)`. The adjoint elides back-solves for any component
+not listed.
+
+User-facing tuples are canonicalised at construction — `Components((:x, :y))`
+and `Components((:y, :x))` resolve to the same type, so distinct permutations
+of the same set do not force recompilation of the rrule closure.
 """
 struct Components{C} end
+function Components(c::Tuple{Vararg{Symbol}})
+    # Canonical order (`_COMPONENT_ORDER`) so permutations unify into one type.
+    return Components{_canonical_components(c)}()
+end
 
-Components(c::Tuple{Vararg{Symbol}}) = Components{c}()
+const _COMPONENT_ORDER = (:x, :y, :zl, :zu, :obj)
+
+function _canonical_components(c::Tuple{Vararg{Symbol}})
+    # Emits each valid component at most once, in `_COMPONENT_ORDER`.
+    return Tuple(s for s in _COMPONENT_ORDER if s in c)
+end
 
 """
     SolverSpec(forward; kind = :build)
 
-Describe a parameter-to-solution pipeline.
+Wrap a parameter-to-solution pipeline:
 
-- `forward::Function` — a unary callable `p -> (solver, obj_val)`. `solver`
-  must be a **solved** `MadNLP.AbstractMadNLPSolver` (or subtype, e.g.
-  `MadIPM.MPCSolver`) whose underlying NLP implements the `ParametricNLPModels`
-  parametric sensitivity API. `obj_val` is the scalar objective at the
-  optimum (used if the caller requests the `:obj` component).
-- `kind` is an informational tag: `:build` means "rebuild the NLP from `p`
-  every time" and `:update` means "reuse an existing workspace and call
-  `update_standard_form!`" — it is not load-bearing for dispatch, but it is
-  propagated into error messages and docstrings.
-
-See [`differentiable_solve`](@ref) for how to consume a `SolverSpec`.
+- `forward::Function` — unary `p -> (solver, obj_val)` where `solver` is an
+  already-solved `MadNLP.AbstractMadNLPSolver` whose underlying NLP implements
+  `ParametricNLPModels`.
+- `kind::Symbol` — informational tag: `:build` (rebuild the NLP each call),
+  `:update` (reuse a persistent workspace).
 """
 struct SolverSpec{F<:Function}
     forward::F
@@ -49,49 +51,67 @@ struct SolverSpec{F<:Function}
 end
 SolverSpec(forward::Function; kind::Symbol = :build) = SolverSpec(forward, kind)
 
-# Internal: run the user's forward function and wrap the solver in a
-# MadDiffSolver. We keep `obj_val` separate (rather than reading it back off
-# the solver) so the user can tell us the exact scalar — MadNLP's internal
-# `obj_val` already includes any scale/sign flips.
 function _run_forward(spec::SolverSpec, p)
-    out = spec.forward(p)
-    solver, obj_val = _unpack_forward(out)
-    sens = MadDiffSolver(solver)
-    return sens, obj_val
+    solver, obj_val = _unpack_forward(spec.forward(p))
+    return MadDiffSolver(solver), obj_val
 end
-_unpack_forward(t::Tuple{Any,Any}) = (t[1], t[2])
-_unpack_forward(solver) = (solver, zero(_T(solver)))
-_T(solver) = eltype(full(solver.x))
 
-# Stub / error paths — filled in by the ChainRulesCore extension.
+_unpack_forward(t::Tuple{Any, Any}) = t
+_unpack_forward(solver)             = (solver, zero(eltype(full(solver.x))))
+
 """
     differentiable_solve(spec::SolverSpec; components = (:x,))
 
-Build a ChainRulesCore-friendly closure `p -> NamedTuple` that solves the
-parametric optimization problem described by `spec` and whose adjoint is the
-implicit-function-theorem VJP through the KKT system at the optimum.
+Return a closure `p -> solution::NamedTuple` whose fields are `components`.
+The closure carries a `ChainRulesCore.rrule` registered by
+`MadDiffChainRulesCoreExt`; the adjoint uses the implicit-function theorem at
+the optimum and only projects cotangents for the requested components.
 
-See the documentation of [`SolverSpec`](@ref) for how to build `spec`, and
-[`Components`](@ref) for the meaning of `components`.
-
-!!! note
-    Requires `ChainRulesCore` to be loaded (Julia's package-extension
-    mechanism activates `MadDiffChainRulesCoreExt` on import).
+`components` must be a subset of `(:x, :y, :zl, :zu, :obj)` without duplicates.
+Requires `using ChainRulesCore`.
 """
 function differentiable_solve end
-
-# Internal entry point the extension supplies; declared here as an
-# undefined generic function so the extension can add the single method
-# without triggering the "method overwriting during precompilation" error.
 function _solve_forward end
 
-# Fallback error path: if the user calls `differentiable_solve` without
-# having loaded ChainRulesCore, the extension's method won't be active and
-# we fall into this stub.
-function differentiable_solve(::Any; kwargs...)
-    error(
-        "`MadDiff.differentiable_solve` requires `ChainRulesCore`. Load it " *
-        "(`using ChainRulesCore`) so the extension `MadDiffChainRulesCoreExt` " *
-        "is registered."
-    )
+# ---------- batch variant ----------
+
+"""
+    BatchSolverSpec(forward; kind = :build)
+
+Batched analogue of [`SolverSpec`](@ref). `forward` is a unary callable
+`p_matrix -> (batch_solver, obj_vec)` where `batch_solver` is an already-solved
+`UniformBatchMPCSolver` and `obj_vec::AbstractVector` carries one objective
+value per batch instance. `p_matrix` is `(nparam, batch_size)`.
+"""
+struct BatchSolverSpec{F<:Function}
+    forward::F
+    kind::Symbol
 end
+BatchSolverSpec(forward::Function; kind::Symbol = :build) = BatchSolverSpec(forward, kind)
+
+function _run_batch_forward(spec::BatchSolverSpec, p)
+    out = spec.forward(p)
+    batch_solver, obj_vec = _unpack_batch_forward(out)
+    return BatchMadDiffSolver(batch_solver), obj_vec
+end
+
+_unpack_batch_forward(t::Tuple{Any, Any}) = t
+function _unpack_batch_forward(batch_solver)
+    bs = batch_solver.problem.batch_size
+    T  = eltype(batch_solver.state.workspace.bx)
+    return batch_solver, zeros(T, bs)
+end
+
+"""
+    batch_differentiable_solve(spec::BatchSolverSpec; components = (:x,))
+
+Batched analogue of [`differentiable_solve`](@ref). Returns a closure
+`p_matrix -> solution::NamedTuple` whose fields are per-instance matrices
+(or a length-`bs` vector for `:obj`). The closure has a `ChainRulesCore.rrule`
+that runs the batch VJP with only the requested components seeded.
+
+Requires `using ChainRulesCore`.
+"""
+function batch_differentiable_solve end
+
+function _batch_solve_forward end

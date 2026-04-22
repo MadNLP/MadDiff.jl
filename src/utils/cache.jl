@@ -1,5 +1,11 @@
-zeros_like(cb, ::Type{T}, n::Int) where {T} = fill!(create_array(cb, T, n), zero(T))
-zeros_like(cb, ::Type{T}, n::Int, m::Int) where {T} = fill!(create_array(cb, T, n, m), zero(T))
+# ============================================================================
+# Scratch caches and result containers for JVP/VJP kernels.
+# ============================================================================
+
+zeros_like(cb, ::Type{T}, dims::Int...) where {T} =
+    fill!(create_array(cb, T, dims...), zero(T))
+
+# ---------- JVP ----------
 
 struct JVPCache{VT, VK, PV}
     kkt_rhs::VK
@@ -24,56 +30,39 @@ struct JVPCache{VT, VK, PV}
 end
 
 function get_jvp_cache!(sens::MadDiffSolver{T}) where {T}
-    if isnothing(sens.jvp_cache)
-        cb = sens.solver.cb
-        n_x = get_nvar(sens.solver.nlp)
-        n_con = get_ncon(sens.solver.nlp)
-        n_p = sens.n_p
-        x_array = full(sens.solver.x)
-        VT = typeof(x_array)
-        n_ineq = length(cb.ind_ineq)
+    sens.jvp_cache === nothing || return sens.jvp_cache
 
-        sens.jvp_cache = JVPCache(
-            UnreducedKKTVector(sens.kkt),
-            UnreducedKKTVector(sens.kkt),
-            UnreducedKKTVector(sens.kkt),
-            zeros_like(cb, T, cb.nvar),
-            zeros_like(cb, T, n_con),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_p),
-        )
-    end
+    cb     = sens.solver.cb
+    nlp    = sens.solver.nlp
+    n_x    = get_nvar(nlp)
+    n_con  = get_ncon(nlp)
+    n_ineq = length(cb.ind_ineq)
+    VT     = typeof(full(sens.solver.x))
+
+    pv() = PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub)
+    kv() = UnreducedKKTVector(sens.kkt)
+    z(n) = zeros_like(cb, T, n)
+
+    sens.jvp_cache = JVPCache(
+        kv(), kv(), kv(),
+        z(cb.nvar), z(n_con),
+        pv(), pv(),
+        z(n_con), z(n_con),
+        z(n_x), z(n_con),
+        z(n_x), z(n_con),
+        z(n_x), z(n_x),
+        z(n_con), z(n_con),
+        z(n_x), z(sens.n_p),
+    )
     return sens.jvp_cache
 end
 
 """
-    JVPResult{VT,T}
+    JVPResult
 
-Container for the result of a Jacobian–vector product (JVP), for the sensitivity of the
-optimal solution with respect to parameters.
-
-Fields store directional sensitivities for a parameter perturbation `Δp`:
-
-- `dx`: direction for primal variables `x`
-- `dy`: direction for constraint multipliers `y`
-- `dzl`: direction for lower-bound multipliers
-- `dzu`: direction for upper-bound multipliers
-- `dobj`: directional derivative of the objective value along `Δp`, populated by
-  [`compute_objective_sensitivity!`](@ref)
-
-Returned by [`jacobian_vector_product!`](@ref).
+Result of [`jacobian_vector_product!`](@ref). Fields:
+`dx`, `dy`, `dzl`, `dzu`, and `dobj::Base.RefValue{T}` (populated by
+[`compute_objective_sensitivity!`](@ref)).
 """
 struct JVPResult{VT, T}
     dx::VT
@@ -84,9 +73,9 @@ struct JVPResult{VT, T}
 end
 
 function JVPResult(sens::MadDiffSolver{T}) where {T}
-    n_x = get_nvar(sens.solver.nlp)
+    cb    = sens.solver.cb
+    n_x   = get_nvar(sens.solver.nlp)
     n_con = get_ncon(sens.solver.nlp)
-    cb = sens.solver.cb
     return JVPResult(
         zeros_like(cb, T, n_x),
         zeros_like(cb, T, n_con),
@@ -95,6 +84,8 @@ function JVPResult(sens::MadDiffSolver{T}) where {T}
         Ref(zero(T)),
     )
 end
+
+# ---------- VJP ----------
 
 struct VJPCache{VT, VK, PV}
     kkt_rhs::VK
@@ -114,46 +105,37 @@ struct VJPCache{VT, VK, PV}
 end
 
 function get_vjp_cache!(sens::MadDiffSolver{T}) where {T}
-    if isnothing(sens.vjp_cache)
-        cb = sens.solver.cb
-        n_x = get_nvar(sens.solver.nlp)
-        n_con = get_ncon(sens.solver.nlp)
-        n_p = sens.n_p
-        x_array = full(sens.solver.x)
-        VT = typeof(x_array)
-        n_ineq = length(cb.ind_ineq)
-        sens.vjp_cache = VJPCache(
-            UnreducedKKTVector(sens.kkt),
-            UnreducedKKTVector(sens.kkt),
-            UnreducedKKTVector(sens.kkt),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub),
-            zeros_like(cb, T, cb.nvar),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, length(cb.ind_lb)),
-            zeros_like(cb, T, length(cb.ind_ub)),
-            zeros_like(cb, T, n_x),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_con),
-            zeros_like(cb, T, n_p),
-            zeros_like(cb, T, cb.nvar),
-        )
-    end
+    sens.vjp_cache === nothing || return sens.vjp_cache
+
+    cb     = sens.solver.cb
+    nlp    = sens.solver.nlp
+    n_x    = get_nvar(nlp)
+    n_con  = get_ncon(nlp)
+    n_ineq = length(cb.ind_ineq)
+    n_lb   = length(cb.ind_lb)
+    n_ub   = length(cb.ind_ub)
+    VT     = typeof(full(sens.solver.x))
+
+    pv() = PrimalVector(VT, cb.nvar, n_ineq, cb.ind_lb, cb.ind_ub)
+    kv() = UnreducedKKTVector(sens.kkt)
+    z(n) = zeros_like(cb, T, n)
+
+    sens.vjp_cache = VJPCache(
+        kv(), kv(), kv(),
+        pv(), pv(),
+        z(cb.nvar), z(n_con),
+        z(n_lb), z(n_ub),
+        z(n_x), z(n_con), z(n_con),
+        z(sens.n_p), z(cb.nvar),
+    )
     return sens.vjp_cache
 end
 
 """
-    VJPResult{VT,GT}
+    VJPResult
 
-Container for the result of a vector–Jacobian product (VJP), for backpropagating
-a scalar loss through the optimal solution.
-
-Fields:
-- `dx`, `dy`, `dzl`, `dzu`: adjoints for the solution components (the solved
-  reverse sensitivities)
-- `grad_p`: gradient of the loss with respect to parameters
-
-Returned by [`vector_jacobian_product!`](@ref).
+Result of [`vector_jacobian_product!`](@ref). `grad_p` is the parameter
+gradient; `dx`, `dy`, `dzl`, `dzu` are the adjoint solve's outputs.
 """
 struct VJPResult{VT, GT}
     dx::VT
@@ -164,9 +146,9 @@ struct VJPResult{VT, GT}
 end
 
 function VJPResult(sens::MadDiffSolver{T}) where {T}
-    n_x = get_nvar(sens.solver.nlp)
+    cb    = sens.solver.cb
+    n_x   = get_nvar(sens.solver.nlp)
     n_con = get_ncon(sens.solver.nlp)
-    cb = sens.solver.cb
     return VJPResult(
         zeros_like(cb, T, n_x),
         zeros_like(cb, T, n_con),
