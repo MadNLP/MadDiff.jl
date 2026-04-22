@@ -181,24 +181,25 @@ function _check_consistency(sens; atol = 1e-8, rtol = 0.0)
         dp = zeros(Float64, sens.n_p); dp[j] = 1.0
         col = MadDiff.jacobian_vector_product!(sens, dp)
         MadDiff.compute_objective_sensitivity!(col, sens, dp)
+        dx, dy, dzl, dzu = Array(col.dx), Array(col.dy), Array(col.dzl), Array(col.dzu)
 
         for i in 1:n_x
             dL_dx = zeros(Float64, n_x); dL_dx[i] = 1.0
-            @test isapprox(col.dx[i], MadDiff.vector_jacobian_product!(sens; dL_dx).grad_p[j]; atol, rtol)
+            @test isapprox(dx[i], Array(MadDiff.vector_jacobian_product!(sens; dL_dx).grad_p)[j]; atol, rtol)
         end
         for i in 1:n_con
             dL_dy = zeros(Float64, n_con); dL_dy[i] = 1.0
-            @test isapprox(col.dy[i], MadDiff.vector_jacobian_product!(sens; dL_dy).grad_p[j]; atol, rtol)
+            @test isapprox(dy[i], Array(MadDiff.vector_jacobian_product!(sens; dL_dy).grad_p)[j]; atol, rtol)
         end
         for i in 1:n_x
             dL_dzl = zeros(Float64, n_x); dL_dzl[i] = 1.0
-            @test isapprox(col.dzl[i], MadDiff.vector_jacobian_product!(sens; dL_dzl).grad_p[j]; atol, rtol)
+            @test isapprox(dzl[i], Array(MadDiff.vector_jacobian_product!(sens; dL_dzl).grad_p)[j]; atol, rtol)
         end
         for i in 1:n_x
             dL_dzu = zeros(Float64, n_x); dL_dzu[i] = 1.0
-            @test isapprox(col.dzu[i], MadDiff.vector_jacobian_product!(sens; dL_dzu).grad_p[j]; atol, rtol)
+            @test isapprox(dzu[i], Array(MadDiff.vector_jacobian_product!(sens; dL_dzu).grad_p)[j]; atol, rtol)
         end
-        @test isapprox(col.dobj[], MadDiff.vector_jacobian_product!(sens; dobj = 1.0).grad_p[j]; atol, rtol)
+        @test isapprox(col.dobj[], Array(MadDiff.vector_jacobian_product!(sens; dobj = 1.0).grad_p)[j]; atol, rtol)
     end
 end
 
@@ -243,7 +244,7 @@ function _simple_lp()
     ucon = [1.0]
     x0 = ones(2)
 
-    return QuadraticModel(c, Hrows, Hcols, Hvals; Arows, Acols, Avals, lcon, ucon, lvar, uvar, c0, x0, name = "simpleLP")
+    return QuadraticModels.QuadraticModel(c, Hrows, Hcols, Hvals; Arows, Acols, Avals, lcon, ucon, lvar, uvar, c0, x0, name = "simpleLP")
 end
 
 function _build_kkt(KKTSystem, Callback)

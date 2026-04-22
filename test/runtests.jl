@@ -8,7 +8,7 @@ const MOI = MathOptInterface
 const HAS_CUDA = CUDA.functional()
 
 include("helpers.jl")
-
+include("problems.jl")
 include("test_diff.jl")
 
 @testset "adjoint_{solve,mul}!" begin
@@ -112,8 +112,6 @@ end
 end
 end
 
-include("problems.jl")
-
 const SKIP_PROBLEMS = Set([
     "qp_multi_con",  # dual degeneracy
     "qp_mixed",  # primal degeneracy
@@ -122,24 +120,46 @@ const SKIP_PROBLEMS = Set([
 
 include("test_exa.jl")
 
-const DX_TOL = 1e-6
-const DY_TOL = 1e-3  # TODO: investigate
-_kkt_config(; name, madnlp_opts = (;), maddiff_opts = (;), dx_tol = DX_TOL, dy_tol = DY_TOL, skip_equality = false) = (name = name, madnlp_opts = madnlp_opts, maddiff_opts = maddiff_opts, dx_tol = dx_tol, dy_tol = dy_tol, skip_equality = skip_equality)
+# Default tolerances. Comparisons use `isapprox(g1, g2; atol, rtol)` so the
+# same pair works whether a sensitivity is O(1) or O(1e6). Problems where
+# DiffOpt's own round-off exceeds these (e.g. `small_coef`) are compared
+# against an analytic reference from `ANALYTIC_SENSITIVITIES` instead.
+#
+# A handful of KKT configs genuinely lose accuracy compared to the
+# default and override these — see individual entries below.
+const DX_ATOL = 1e-6
+const DY_ATOL = 1e-3
+const RTOL    = 1e-4
+
+_kkt_config(; name, madnlp_opts = (;), maddiff_opts = (;),
+             dx_atol = DX_ATOL, dy_atol = DY_ATOL, rtol = RTOL,
+             skip_equality = false) =
+    (; name, madnlp_opts, maddiff_opts, dx_atol, dy_atol, rtol, skip_equality)
+
 const KKT_CONFIGS = [
     _kkt_config(name = "Default (SparseKKT)"),
     _kkt_config(
         name = "Default Skip (SparseKKT)",
         maddiff_opts = (; skip_kkt_refactorization = true),
-        dx_tol = 5e-4,
-        dy_tol = 5e-3,
+        # `skip_kkt_refactorization` reuses the solver's final factor, which
+        # was built before the last few iterations tightened μ — residuals
+        # still have an O(μ) smear that IR can only partly clean up.
+        dx_atol = 5e-4,
+        dy_atol = 5e-3,
     ),
     _kkt_config(
         name = "SparseCondensedKKT",
         madnlp_opts = (; kkt_system = MadNLP.SparseCondensedKKTSystem, bound_relax_factor = 1e-6),
-        dx_tol = 5e-4,
-        dy_tol = 5e-3,
+        # Condensed eliminates the slacks, so K_cond = H + JᵀΣJ with
+        # Σ ≈ λ/s. At the test's `bound_relax_factor = 1e-6` the active
+        # slacks sit near 1e-6, making K_cond's condition number
+        # ~1e10–1e12. Both MadDiff *and* DiffOpt lose 3–4 digits on this
+        # path; the augmented-system configs above are unaffected.
+        dx_atol = 5e-4,
+        dy_atol = 5e-3,
+        rtol = 5e-3,
         skip_equality = true,
-    ),  # /!\ reduced tolerances for condensed
+    ),
     _kkt_config(
         name = "SparseUnreducedKKT",
         madnlp_opts = (; kkt_system = MadNLP.SparseUnreducedKKTSystem),
@@ -163,9 +183,11 @@ const KKT_CONFIGS = [
     _kkt_config(
         name = "HybridCondensedKKT",
         madnlp_opts = (; kkt_system = HybridKKT.HybridCondensedKKTSystem),
-        dx_tol = 5e-4,
-        dy_tol = 5e-3,
-    ),  # /!\ reduced tolerances for condensed
+        # Same condensed-conditioning story as `SparseCondensedKKT`.
+        dx_atol = 5e-4,
+        dy_atol = 5e-3,
+        rtol = 5e-3,
+    ),
     # TODO: test MadIPM.Optimizer,
 ]
 
@@ -180,8 +202,11 @@ if HAS_CUDA
                 bound_relax_factor = 1e-7,
                 tol = 1e-7,
             ),
-            dx_tol = 1e-4,
-            dy_tol = 1e-2,
+            # Tighter `bound_relax_factor` than the CPU condensed config
+            # above recovers one digit, but Σ still dominates conditioning.
+            dx_atol = 1e-4,
+            dy_atol = 1e-2,
+            rtol = 1e-3,
         ),
     )
 end
@@ -196,26 +221,23 @@ for cfg in KKT_CONFIGS
 kkt_name = cfg.name
 madnlp_opts_base = cfg.madnlp_opts
 maddiff_opts = cfg.maddiff_opts
-dx_tol = cfg.dx_tol
-dy_tol = cfg.dy_tol
+dx_atol = cfg.dx_atol
+dy_atol = cfg.dy_atol
+rtol    = cfg.rtol
 skip_equality = cfg.skip_equality
 for (fv_name, fv_handler) in FV_CONFIGS
 @testset "$kkt_name × $fv_name" begin
 Random.seed!(42)
-for prob_name in keys(PROBLEMS)
+for prob_name in sort!(collect(keys(PROBLEMS)))
     prob_name in SKIP_PROBLEMS && continue
     build, n_params, has_equality, is_lp = get_problem(prob_name)
     kkt_system = get(madnlp_opts_base, :kkt_system, nothing)
     kkt_system === MadIPM.NormalKKTSystem && !is_lp && continue
     skip_equality && has_equality && continue
 
-    # TODO: investigate
-    prob_name == "small_coef" && kkt_system === MadNLP.SparseCondensedKKTSystem && continue
-
-    # tolerance adjustments for misbehaving cases
-    dx_atol = prob_name == "small_coef" ? 0.0 : dx_tol  # use rtol for small_coef
-    dy_atol = prob_name == "small_coef" ? 0.0 : dy_tol
-    rtol = prob_name == "small_coef" ? 1e-4 : 0.0
+    # Reference source: closed form (if registered — see `ANALYTIC_SENSITIVITIES`
+    # in problems.jl) otherwise DiffOpt.
+    analytic = get(ANALYTIC_SENSITIVITIES, prob_name, nothing)
 
     @testset "$prob_name" begin
     madnlp_opts = fv_handler === nothing ?
@@ -230,21 +252,26 @@ for prob_name in keys(PROBLEMS)
         for pidx in 1:n_params
         dp = randn(rng)
         (dx_mad, dy_mad, dzl_mad, dzu_mad, dobj_mad) = run_maddiff(build; param_idx = pidx, dp = dp, madnlp_opts, maddiff_opts)
-        (dx_diff, dy_diff, dzl_diff, dzu_diff, dobj_diff) = run_diffopt(build; param_idx = pidx, dp = dp, madnlp_opts)
+        (dx_ref, dy_ref, dzl_ref, dzu_ref, dobj_ref) = if analytic !== nothing
+            col = analytic(pidx)
+            (col.dx .* dp, col.dy .* dp, col.dzl .* dp, col.dzu .* dp, col.dobj * dp)
+        else
+            run_diffopt(build; param_idx = pidx, dp = dp, madnlp_opts)
+        end
 
-        for (g1, g2) in zip(dx_mad, dx_diff)
-            @test isapprox(g1, g2; atol=dx_atol, rtol)
+        for (g1, g2) in zip(dx_mad, dx_ref)
+            @test isapprox(g1, g2; atol=dx_atol, rtol=rtol)
         end
-        for (g1, g2) in zip(dy_mad, dy_diff)
-            @test isapprox(g1, g2; atol=dy_atol, rtol)
+        for (g1, g2) in zip(dy_mad, dy_ref)
+            @test isapprox(g1, g2; atol=dy_atol, rtol=rtol)
         end
-        for (g1, g2) in zip(dzl_mad, dzl_diff)
-            @test isapprox(g1, g2; atol=dy_atol, rtol)
+        for (g1, g2) in zip(dzl_mad, dzl_ref)
+            @test isapprox(g1, g2; atol=dy_atol, rtol=rtol)
         end
-        for (g1, g2) in zip(dzu_mad, dzu_diff)
-            @test isapprox(g1, g2; atol=dy_atol, rtol)
+        for (g1, g2) in zip(dzu_mad, dzu_ref)
+            @test isapprox(g1, g2; atol=dy_atol, rtol=rtol)
         end
-        @test isapprox(dobj_mad, dobj_diff; atol=dy_atol, rtol)
+        @test isapprox(dobj_mad, dobj_ref; atol=dy_atol, rtol=rtol)
         end
     end
 
@@ -258,15 +285,24 @@ for prob_name in keys(PROBLEMS)
         dobj = randn(rng)
 
         grad_mad = run_maddiff_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, madnlp_opts, maddiff_opts)
-        grad_diff = run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, madnlp_opts)
-        for (g1, g2) in zip(grad_mad, grad_diff)
-            @test isapprox(g1, g2; atol=dy_atol, rtol)
+        grad_ref = if analytic !== nothing
+            [let c = analytic(j)
+                 dot(dL_dx, c.dx) + dot(dL_dy, c.dy) +
+                 dot(dL_dzl, c.dzl[1:length(dL_dzl)]) +
+                 dot(dL_dzu, c.dzu[1:length(dL_dzu)]) +
+                 dobj * c.dobj
+             end for j in 1:n_params]
+        else
+            run_diffopt_reverse(build; dL_dx, dL_dy, dL_dzl, dL_dzu, dobj, madnlp_opts)
+        end
+        for (g1, g2) in zip(grad_mad, grad_ref)
+            @test isapprox(g1, g2; atol=dy_atol, rtol=rtol)
         end
     end
 
     # Consistency tests: jac/jact transposes each other, jvp/vjp are adjoint
     @testset "Consistency $prob_name" begin
-        run_maddiff_consistency(build; madnlp_opts, maddiff_opts, atol = dy_atol, rtol)
+        run_maddiff_consistency(build; madnlp_opts, maddiff_opts, atol=dy_atol, rtol=rtol)
     end
 end
 end

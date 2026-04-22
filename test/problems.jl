@@ -494,3 +494,50 @@ function get_problem(prob_name)
     build, n_params, has_equality = PROBLEMS[prob_name]
     return build, n_params, has_equality, prob_name in LP_PROBLEMS
 end
+
+# ----------------------------------------------------------------------------
+# Analytic sensitivity references
+# ----------------------------------------------------------------------------
+# For problems where DiffOpt's own numerics are the limiting factor (e.g.
+# small constraint coefficients amplify DiffOpt's round-off above our test
+# tolerance), we compare MadDiff against a closed-form sensitivity instead.
+#
+# Each entry is a function `param_idx -> NamedTuple` giving the Jacobian
+# *column* for the chosen parameter index at the solution point:
+#
+#   (; dx, dy, dzl, dzu, dobj)
+#
+#     dx, dy, dzl, dzu :: Vector{Float64}   (match `run_maddiff` output shape)
+#     dobj             :: Float64
+#
+# Forward sensitivity for perturbation `dp` is `column .* dp`. Reverse
+# sensitivity for seeds `(dL_dx, dL_dy, dL_dzl, dL_dzu, dobj_seed)` is
+# `dot(dL_dx, dx) + dot(dL_dy, dy) + dot(dL_dzl, dzl) + dot(dL_dzu, dzu)
+#  + dobj_seed * dobj` summed into `grad_p[param_idx]`.
+#
+# Adding a problem to this registry is a *statement* that MadDiff's
+# computation is trustworthy on it and DiffOpt is not. Before adding a new
+# entry: derive the closed form by hand, verify MadDiff matches it to
+# `~1e-8`, and check that DiffOpt is the side that disagrees. Do *not*
+# use this registry to paper over legitimate MadDiff bugs.
+const ANALYTIC_SENSITIVITIES = Dict{String, Function}()
+
+# min x²  s.t.  a·x ≥ p   (a = 0.001, p₀ = 0.001)
+# Optimum:  x* = p/a,  λ* = 2x*/a = 2p/a²,  slack-bound dual zl_s = λ*.
+# Sensitivities: dx/dp = 1/a,  dλ/dp = 2/a²,  dzl_s/dp = 2/a².
+# No user-level variable bounds ⇒ dzl (per-variable) is 0.
+# Envelope: d(obj)/dp = -λ · ∂g/∂p = λ (g = a·x - p).
+ANALYTIC_SENSITIVITIES["small_coef"] = function (param_idx)
+    @assert param_idx == 1
+    a = 0.001
+    p = 0.001
+    x = p / a          # = 1.0
+    λ = 2 * x / a      # = 2000.0
+    return (
+        dx   = [1 / a],           # [1000.0]
+        dy   = [2 / a^2],         # [2.0e6]
+        dzl  = [0.0],             # no user lb on x
+        dzu  = Float64[],
+        dobj = λ,                 # = 2000.0
+    )
+end
