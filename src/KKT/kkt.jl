@@ -1,110 +1,80 @@
-function get_sensitivity_kkt(solver, config::MadDiffConfig)
-    reusing_solver_kkt = !_needs_new_kkt(config)
+# ============================================================================
+# KKT preparation and refined (back-)solves driven from a MadDiffSolver.
+# ============================================================================
 
-    kkt = if reusing_solver_kkt
-        solver.kkt
-    else
-        build_new_kkt(
-            solver;
-            kkt_system = config.kkt_system,
-            kkt_options = config.kkt_options,
-            linear_solver = config.linear_solver,
-            linear_solver_options = config.linear_solver_options,
-        )
-    end
-    if !(reusing_solver_kkt && config.skip_kkt_refactorization)
-        refactorize_kkt!(kkt, solver)
-    end
+function get_sensitivity_kkt(solver, config::MadDiffConfig)
+    reuse = !_needs_new_kkt(config)
+    kkt   = reuse ? solver.kkt : build_new_kkt(solver; config)
+    (reuse && config.skip_kkt_refactorization) || refactorize_kkt!(kkt, solver)
     return kkt
 end
 
 function refactorize_kkt!(kkt, solver::MadNLPSolver)
     set_aug_diagonal!(kkt, solver)
     set_aug_rhs!(solver, kkt, solver.c, solver.mu)
-    dual_inf_perturbation!(primal(solver.p), solver.ind_llb, solver.ind_uub, solver.mu, solver.opt.kappa_d)
+    dual_inf_perturbation!(primal(solver.p), solver.ind_llb, solver.ind_uub,
+                           solver.mu, solver.opt.kappa_d)
 
-    _solver = (kkt === solver.kkt) ? solver : _SensitivitySolverShim(solver, kkt)
-    inertia_correction!(solver.inertia_corrector, _solver) ||
-        error("Failed to factorize KKT for sensitivities with inertia correction.")
+    shim = kkt === solver.kkt ? solver : _SensitivitySolverShim(solver, kkt)
+    inertia_correction!(solver.inertia_corrector, shim) ||
+        error("MadDiff: failed to factorize KKT for sensitivities (inertia correction).")
     return nothing
 end
 
-function build_new_kkt(
-        solver::AbstractMadNLPSolver;
-        kkt_system = nothing,
-        kkt_options = nothing,
-        linear_solver = nothing,
-        linear_solver_options = nothing,
-    )
-    cb = solver.cb
-    kkt_orig = solver.kkt
+function build_new_kkt(solver::AbstractMadNLPSolver; config::MadDiffConfig)
+    cb            = solver.cb
+    kkt_type      = something(config.kkt_system, SparseUnreducedKKTSystem)
+    linear_solver = something(config.linear_solver,
+                              _get_wrapper_type(solver.kkt.linear_solver))
 
-    kkt_type = isnothing(kkt_system) ? SparseUnreducedKKTSystem : kkt_system
+    opts = config.kkt_options === nothing ? Dict{Symbol, Any}() :
+                                            copy(config.kkt_options)
+    config.linear_solver_options === nothing ||
+        (opts[:opt_linear_solver] = config.linear_solver_options)
 
-    linear_solver_type = isnothing(linear_solver) ?
-        _get_wrapper_type(kkt_orig.linear_solver) : linear_solver
-
-    opts = isnothing(kkt_options) ? Dict{Symbol, Any}() : copy(kkt_options)
-    !isnothing(linear_solver_options) && (opts[:opt_linear_solver] = linear_solver_options)
-
-    kkt_new = create_kkt_system(kkt_type, cb, linear_solver_type; opts...)
-    initialize!(kkt_new)
-
-    eval_jac_wrapper!(solver, kkt_new, solver.x)
-    eval_lag_hess_wrapper!(solver, kkt_new, solver.x, solver.y)
-
-    return kkt_new
+    kkt = create_kkt_system(kkt_type, cb, linear_solver; opts...)
+    initialize!(kkt)
+    eval_jac_wrapper!(solver, kkt, solver.x)
+    eval_lag_hess_wrapper!(solver, kkt, solver.x, solver.y)
+    return kkt
 end
 
-function _solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
-    d = cache.kkt_sol
-    work = cache.kkt_work
+# ---------- refined solves ----------
+#
+# Forward JVP runs Richardson IR via MadNLP's `solve_refine!` against the
+# forward `mul!`, over the solver's `RichardsonIterator`. Reverse VJP runs
+# IR via `adjoint_solve_refine!` against `adjoint_mul!` over an
+# `AdjointRichardsonIterator` wrapping this solver's `AdjointKKT` — the
+# latter carries the `hess_diag` scratch that makes `adjoint_mul!` correct
+# on GPU (see `AdjointKKT` docstring in `adjoint.jl`). Both share the same
+# try-improve-retry pattern against the solver's factor.
 
-    copyto!(full(d), full(w))
-    solver = sens.solver
-    iterator = if sens.kkt === solver.kkt
+function _kkt_solve_with_refine!(
+    sens::MadDiffSolver, w::AbstractKKTVector, cache, refine!::Function,
+)
+    solver  = sens.solver
+    d, work = cache.kkt_sol, cache.kkt_work
+
+    iterator = if refine! === adjoint_solve_refine!
+        AdjointRichardsonIterator(sens.adjoint_kkt;
+            opt    = solver.iterator.opt,
+            logger = solver.iterator.logger,
+            cnt    = solver.cnt,
+        )
+    elseif sens.kkt === solver.kkt
         solver.iterator
     else
-        RichardsonIterator(
-            sens.kkt;
-            opt=solver.iterator.opt,
-            logger=solver.iterator.logger,
-            cnt=solver.cnt,
+        RichardsonIterator(sens.kkt;
+            opt    = solver.iterator.opt,
+            logger = solver.iterator.logger,
+            cnt    = solver.cnt,
         )
     end
-    solver.cnt.linear_solver_time += @elapsed begin
-        if solve_refine!(d, iterator, w, work)
-            # ok
-        elseif improve!(sens.kkt.linear_solver)
-            solve_refine!(d, iterator, w, work)
-        end
-    end
-    copyto!(full(w), full(d))
-    return nothing
-end
-
-function _adjoint_solve_with_refine!(sens::MadDiffSolver{T}, w::AbstractKKTVector, cache) where {T}
-    d = cache.kkt_sol
-    work = cache.kkt_work
 
     copyto!(full(d), full(w))
-    solver = sens.solver
-    iterator = if sens.kkt === solver.kkt
-        solver.iterator
-    else
-        RichardsonIterator(
-            sens.kkt;
-            opt=solver.iterator.opt,
-            logger=solver.iterator.logger,
-            cnt=solver.cnt,
-        )
-    end
     solver.cnt.linear_solver_time += @elapsed begin
-        if adjoint_solve_refine!(d, iterator, w, work)
-            # ok
-        elseif improve!(sens.kkt.linear_solver)
-            adjoint_solve_refine!(d, iterator, w, work)
-        end
+        refine!(d, iterator, w, work) ||
+            (improve!(sens.kkt.linear_solver) && refine!(d, iterator, w, work))
     end
     copyto!(full(w), full(d))
     return nothing

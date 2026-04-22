@@ -1,29 +1,51 @@
 module MadDiff
 
-import MadNLP
-import MadNLP: AbstractMadNLPSolver, MadNLPSolver, _madnlp_unsafe_wrap,
-    set_aug_diagonal!, set_aug_rhs!, get_slack_regularization, dual_inf_perturbation!,
-    inertia_correction!, solve_kkt!, solve_linear_system!, solve_refine!, improve!, RichardsonIterator,
-    full, primal, variable, slack, dual, dual_lb, dual_ub, primal_dual, num_variables,
-    SOLVE_SUCCEEDED, SOLVED_TO_ACCEPTABLE_LEVEL,
-    create_kkt_system, initialize!,
-    AbstractKKTSystem, AbstractDenseKKTSystem, AbstractUnreducedKKTSystem,
-    SparseUnreducedKKTSystem, CompactLBFGS,
-    SparseCondensedKKTSystem, DenseCondensedKKTSystem,
-    ScaledSparseKKTSystem, SparseKKTSystem, DenseKKTSystem, 
-    AbstractKKTVector, UnreducedKKTVector, PrimalVector,
-    unpack_x!, unpack_y!, unpack_z!,
-    eval_jac_wrapper!, eval_lag_hess_wrapper!,
-    AbstractCallback, SparseCallback, MakeParameter, create_array,
-    @debug, @sprintf, _symv!, _eval_grad_f_wrapper!
+# ============================================================================
+# MadDiff — implicit differentiation through MadNLP.
+#
+# Given a solved `MadNLP.AbstractMadNLPSolver` whose NLP implements the
+# `ParametricNLPModels` parametric-sensitivity API, MadDiff computes
+#
+#   dx/dp, dy/dp, dzl/dp, dzu/dp
+#
+# by linearising the KKT system at the optimum and reusing MadNLP's factored
+# KKT matrix (or a fresh one, per `MadDiffConfig`). The public surface is a
+# pair of kernels — `jacobian_vector_product!` (forward) and
+# `vector_jacobian_product!` (reverse) — plus a `ChainRulesCore` wrapper
+# (`differentiable_solve`) and DiffOpt / MOI adapters that live in extensions.
+# ============================================================================
 
-import NLPModels: @lencheck, get_nvar, get_ncon, get_x0, get_y0, grad!
+import LinearAlgebra
+import LinearAlgebra: axpy!, dot, mul!, norm, Symmetric
+import SparseArrays
+
+import MadNLP
+import MadNLP:
+    AbstractCallback, AbstractDenseKKTSystem, AbstractKKTSystem,
+    AbstractKKTVector, AbstractMadNLPSolver, AbstractUnreducedKKTSystem,
+    CompactLBFGS, DenseCondensedKKTSystem, DenseKKTSystem, MadNLPSolver,
+    MadNLPCounters, MadNLPLogger, MakeParameter, PrimalVector,
+    RichardsonIterator, RichardsonOptions, ScaledSparseKKTSystem,
+    SparseCallback, SparseCondensedKKTSystem, SparseKKTSystem,
+    SparseUnreducedKKTSystem, SOLVE_SUCCEEDED, SOLVED_TO_ACCEPTABLE_LEVEL,
+    UnreducedKKTVector,
+    _eval_grad_f_wrapper!, _madnlp_unsafe_wrap, _symv!, @debug, @sprintf,
+    create_array, create_kkt_system, dual, dual_inf_perturbation!, dual_lb,
+    dual_ub, eval_jac_wrapper!, eval_lag_hess_wrapper!, full,
+    get_slack_regularization, improve!, inertia_correction!, initialize!,
+    num_variables, primal, primal_dual, set_aug_diagonal!, set_aug_rhs!,
+    slack, solve_kkt!, solve_linear_system!, solve_refine!, unpack_x!,
+    unpack_y!, unpack_z!, variable
+
+import NLPModels: @lencheck, get_ncon, get_nvar, grad!
 import ParametricNLPModels:
-    get_nparam, get_nnzgp, get_nnzjp, get_nnzhp, get_nnzjplcon, get_nnzjpucon, get_nnzjplvar, get_nnzjpuvar,
+    get_nnzgp, get_nnzhp, get_nnzjp, get_nnzjplcon, get_nnzjplvar,
+    get_nnzjpucon, get_nnzjpuvar, get_nparam,
     grad_param!, hpprod!, hptprod!, jpprod!, jptprod!,
-    lvar_jpprod!, lvar_jptprod!, uvar_jpprod!, uvar_jptprod!,
-    lcon_jpprod!, lcon_jptprod!, ucon_jpprod!, ucon_jptprod!
-import LinearAlgebra: dot, mul!, norm, axpy!, Symmetric
+    lcon_jpprod!, lcon_jptprod!, lvar_jpprod!, lvar_jptprod!,
+    ucon_jpprod!, ucon_jptprod!, uvar_jpprod!, uvar_jptprod!
+
+# ---------- core implementation ----------
 
 include("utils/packing.jl")
 include("KKT/adjoint.jl")
@@ -40,60 +62,13 @@ include("KKT/kkt.jl")
 include("jvp.jl")
 include("vjp.jl")
 include("chainrules_api.jl")
+include("extension_stubs.jl")
 
-export MadDiffSolver, MadDiffConfig
-export jacobian_vector_product!, vector_jacobian_product!
-export compute_objective_sensitivity!
-export reset_sensitivity_cache!
-export differentiable_solve, SolverSpec, Components
-
-"""
-    BatchMadDiffSolver(batch_solver::MadIPM.UniformBatchMPCSolver)
-
-Construct a batched sensitivity solver wrapping a solved `UniformBatchMPCSolver`.
-Provides `jacobian_vector_product!` / `vector_jacobian_product!` methods that
-operate on `(nparam, batch_size)` matrices and return per-instance results.
-
-!!! note
-    This constructor lives in the `MadIPMExt` extension. Load `MadIPM` (and
-    ensure `BatchQuadraticModels` is available) for the batch path. The
-    current MadIPM release refactored the batch solver's internal field
-    layout; the batch JVP/VJP adapters are on the `mk/batch` branch of this
-    repository and are in the process of being forward-ported — see the
-    project memory note `project_maddiff_batch.md` for status.
-"""
-function BatchMadDiffSolver end
-
-"""
-    diff_model(optimizer_constructor; kwargs...)
-
-Create a JuMP Model with MadDiff wrapping `optimizer_constructor`.
-"""
-function diff_model(args...; kwargs...)
-    error(
-        "`MadDiff.diff_model` requires the `DiffOpt` extension. " *
-        "Make sure both `DiffOpt` and `MadDiff` are loaded when using the JuMP API.",
-    )
-end
-
-function forward_differentiate! end
-function reverse_differentiate! end
-function empty_input_sensitivities! end
-function diffopt_model_constructor end
-function get_reverse_parameter end
-struct ForwardConstraintSet end
-struct ForwardVariablePrimal end
-struct ForwardConstraintDual end
-struct ReverseVariablePrimal end
-struct ReverseConstraintDual end
-struct ReverseConstraintSet end
-struct ForwardObjectiveSensitivity end
-struct ReverseObjectiveSensitivity end
-struct DifferentiateTimeSec end
-const MADDIFF_KKTSYSTEM = "MadDiffKKTSystem"
-const MADDIFF_KKTSYSTEM_OPTIONS = "MadDiffKKTSystemOptions"
-const MADDIFF_LINEARSOLVER = "MadDiffLinearSolver"
-const MADDIFF_LINEARSOLVER_OPTIONS = "MadDiffLinearSolverOptions"
-const MADDIFF_SKIP_KKT_REFACTORIZATION = "MadDiffSkipKKTRefactorization"
+export MadDiffSolver, MadDiffConfig,
+    JVPResult, VJPResult,
+    jacobian_vector_product!, vector_jacobian_product!,
+    compute_objective_sensitivity!, reset_sensitivity_cache!,
+    differentiable_solve, SolverSpec, Components,
+    batch_differentiable_solve, BatchSolverSpec, BatchMadDiffSolver
 
 end # module MadDiff

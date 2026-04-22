@@ -1,15 +1,16 @@
+# ============================================================================
+# DenseKKTSystem — dense augmented KKT.
+# ============================================================================
+
 function adjoint_mul!(
-    w::AbstractKKTVector{T},
-    kkt::AbstractDenseKKTSystem,
-    x::AbstractKKTVector,
-    alpha = one(T),
-    beta = zero(T),
+    w::AbstractKKTVector{T}, kkt::AbstractDenseKKTSystem,
+    x::AbstractKKTVector, alpha = one(T), beta = zero(T),
 ) where {T}
-    (m, n) = size(kkt.jac)
-    wx = view(primal(w), 1:n)
-    ws = view(primal(w), n+1:length(primal(w)))
-    wy = dual(w)
-    wz = view(dual(w), kkt.ind_ineq)
+    m, n = size(kkt.jac)
+    wx   = view(primal(w), 1:n)
+    ws   = view(primal(w), n+1:length(primal(w)))
+    wy   = dual(w)
+    wz   = view(dual(w), kkt.ind_ineq)
 
     xx = view(primal(x), 1:n)
     xs = view(primal(x), n+1:length(primal(x)))
@@ -23,7 +24,10 @@ function adjoint_mul!(
     end
     ws .= beta .* ws .- alpha .* xz
     wz .-= alpha .* xs
-    _adjoint_kktmul!(w, x, kkt.reg, kkt.du_diag, kkt.l_lower, kkt.u_lower, kkt.l_diag, kkt.u_diag, alpha, beta)
+
+    _adjoint_kktmul!(w, x, kkt.reg, kkt.du_diag,
+                     kkt.l_lower, kkt.u_lower, kkt.l_diag, kkt.u_diag,
+                     alpha, beta)
     return w
 end
 
